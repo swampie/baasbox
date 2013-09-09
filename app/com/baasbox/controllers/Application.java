@@ -37,6 +37,14 @@ public class Application extends Controller {
 		  return ok(views.html.admin.index.render(version));
 	  } 
 	  
+	  /***
+	   * Admin panel web page v2
+	   * @return
+	   */
+	  public static Result console(){
+		  return ok(views.html.admin.console.render());
+	  } 
+	  
 	//renders the spashscreen
   public static Result index() {
 	  String version = BBConfiguration.configuration.getString(IBBConfigurationKeys.API_VERSION);

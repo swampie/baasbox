@@ -203,7 +203,7 @@ public class Document extends Controller {
 	  
 	  @BodyParser.Of(BodyParser.Json.class)
 	  public static Result updateDocument(String collectionName, String id, boolean isUUID){
-		  Logger.trace("Method Start");
+		  Logger.debug("Method Start");
 		  Http.RequestBody body = request().body();
 		  JsonNode bodyJson= body.asJson();
 		  Logger.trace("updateDocument collectionName: " + collectionName);

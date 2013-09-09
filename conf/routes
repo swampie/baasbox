@@ -13,12 +13,9 @@
 
 # Admin Panel Static Asset
 GET 	/console						controllers.Default.redirect(to = "/console/")
-GET		/console/index.html				controllers.Default.redirect(to = "/console/")
-GET		/console/login.html				controllers.Default.redirect(to = "/console/")
-GET 	/console/						com.baasbox.controllers.Application.login()
+GET 	/console/						com.baasbox.controllers.Application.console()
 GET     /console/js/routes      	 	com.baasbox.controllers.AllRoutes.javascriptRoutes()
-GET     /console/*file               	controllers.Assets.at(path="/public/console", file)
-
+GET     /console/assets/*file           controllers.Assets.at(path="/public/console", file)
 
 #Assets action
 POST	/admin/asset						com.baasbox.controllers.Asset.post()
