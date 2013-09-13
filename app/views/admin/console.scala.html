@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html ng-app lang="en">
+<html  lang="en">
 <head>
 	<meta charset="utf-8" />
 	<title>BaasBox Admin Panel</title>
@@ -17,12 +17,24 @@
 	<link rel="shortcut icon" href="img/favicon.ico">
 	<link rel="icon" href="img/favicon.ico" />
 	<script src="app/js/modernizr-2.6.2.min.js"></script>
-	<link href='css/v2/normalize.css' rel='stylesheet'>	
+	<link href='css/bootstrap-classic.min.css' rel='stylesheet'>
 	<link href='css/v2/baasbox.css' rel='stylesheet'>
 	
-	<head></head>
+</head>
 	<body>
-		<div ng-view></div>
+	<div class="container">
+		<div data-ng-controller="MainController">
+			<header>
+				<h1>Hello {{currentUser().user.name}}</h1>
+				<span data-ng-show="isLoggedIn()">
+					<a data-ng-click="logout()">Logout</a>
+				</span>
+				
+			</header>
+		</div>
+		<div  data-ng-view></div>
+	</div>
+		
 	</body>
 	<script type="text/javascript" src="@com.baasbox.controllers.routes.AllRoutes.javascriptRoutes"></script>
 	
@@ -34,10 +46,12 @@
 	<script type="text/javascript" src="app/baasbox.js"></script>
 	<script type="text/javascript" src="app/location.js"></script>
 	<script type="text/javascript" src="app/directives.js"></script>
+	<script type="text/javascript" src="app/services.js"></script>
 	<script type="text/javascript" src="app/filters.js"></script>
 	
 	<!-- Controllers -->
 	<script type="text/javascript" src="app/controllers/LoginController.js"></script>
+	<script type="text/javascript" src="app/controllers/MainController.js"></script>
 	<script type="text/javascript" src="app/init.js"></script>
  
 </head>

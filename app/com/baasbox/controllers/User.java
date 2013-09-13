@@ -455,7 +455,9 @@ public class User extends Controller {
 	  @BodyParser.Of(BodyParser.FormUrlEncoded.class)
 	  public static Result login() throws SqlInjectionException {
 		 Map<String, String[]> body = request().body().asFormUrlEncoded();
+		 
 		 if (body==null) return badRequest("missing data: is the body x-www-form-urlencoded?");	
+		 System.out.println("BDOY:"+body);
 		 String username="";
 		 String password="";
 		 String appcode="";

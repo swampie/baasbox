@@ -25,13 +25,16 @@ import com.baasbox.dao.exception.InvalidModelException;
 import com.baasbox.db.DbHelper;
 import com.baasbox.exception.SqlInjectionException;
 import com.baasbox.util.QueryParams;
+import com.orientechnologies.orient.core.db.graph.OGraphDatabase.LOCK_MODE;
+import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.record.impl.ODocument;
 
 
 public class DocumentDao extends NodeDao {
-	
+
+	private static final int maxRetries = 10;
 	protected CollectionDao collDao;
-	
+
 	protected DocumentDao(String collectionName) throws InvalidCollectionException {
 		super(collectionName);
 		collDao = CollectionDao.getInstance();
@@ -46,29 +49,35 @@ public class DocumentDao extends NodeDao {
 	public static DocumentDao getInstance(String collectionName) throws InvalidCollectionException{
 		return new DocumentDao(collectionName);
 	}
-	
+
 	@Override
 	public ODocument create() throws Throwable{
 		Logger.trace("Method Start");
 		DbHelper.requestTransaction();
 		ODocument doc = super.create();
 		try{
-		
-			doc.save();
-			ODocument coll=null;
-			try{ 
-				coll=collDao.getByName(super.MODEL_NAME);
-			}catch (SqlInjectionException e){
-				Logger.error(ExceptionUtils.getFullStackTrace(e));
-			}
-			ODocument docVertex = doc.field(super.FIELD_LINK_TO_VERTEX);
-			ODocument collVertex = coll.field(super.FIELD_LINK_TO_VERTEX);
-			ODocument edge=db.createEdge(collVertex, docVertex); //link the record in the Collection class to the record just created
-			doc.save();
-			docVertex.save();
-			collVertex.save();
-			edge.save();
-			DbHelper.commitTransaction();
+		for( int retry = 0; retry < maxRetries; ++retry ) {
+			    doc.save();
+				ODocument coll=null;
+				try{ 
+					coll=collDao.getByName(super.MODEL_NAME);
+				}catch (SqlInjectionException e){
+					Logger.error(ExceptionUtils.getFullStackTrace(e));
+					throw e;
+				}
+				ODocument docVertex = doc.field(super.FIELD_LINK_TO_VERTEX);
+				ODocument collVertex = coll.field(super.FIELD_LINK_TO_VERTEX);
+				try{
+					ODocument edge=db.createEdge(collVertex.getIdentity(), docVertex.getIdentity()); //link the record in the Collection class to the record just created
+					edge.save();
+					DbHelper.commitTransaction();
+					break;
+				}catch(Exception e){
+					collVertex.reload();
+				}
+					//docVertex.save();
+				//collVertex.save();
+		}
 		}catch (Throwable e){
 			DbHelper.rollbackTransaction();
 			throw e;
@@ -76,12 +85,12 @@ public class DocumentDao extends NodeDao {
 		Logger.trace("Method End");
 		return doc;
 	}//getNewModelInstance
-	
+
 	public void save(ODocument document) throws InvalidModelException{
 		super.save(document);
 	}
 
 
-	
+
 
 }

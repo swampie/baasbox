@@ -2,11 +2,14 @@
 window.app.config(['$routeProvider',
     function($routeProvider) {
         $routeProvider.
-        when('/console/', {
-            templateUrl: 'app/views/login/login.html'
+        when('/login', {
+            templateUrl: 'app/views/login/login.html',
+        }).
+        when('/dashboard', {
+            templateUrl: 'app/views/dashboard/dashboard.html'
         }).
         otherwise({
-            redirectTo: '/console/'
+            redirectTo: '/login'
         });
     }
 ]);
@@ -14,6 +17,6 @@ window.app.config(['$routeProvider',
 //Setting HTML5 Location Mode
 window.app.config(['$locationProvider',
     function($locationProvider) {
-        $locationProvider.html5Mode(true);
+        $locationProvider.html5Mode(false);
     }
 ]);

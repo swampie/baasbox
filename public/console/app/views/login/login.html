@@ -1,22 +1,22 @@
-<div class="login-form-container" ng-controller="LoginController">
-	<form method="POST">
-		<div class="ic clearfix">
-			<label> username:</label>
-				<input type="text" name="username" value=""/>
+<div class="form-inline span10 offset3 login-form" ng-controller="LoginController">
+	<form method="POST" ng-submit="login()">
+		<fieldset>
+		<div class="control-group">
+			<label for="username"><i class="icon-user"></i> username:</label>
+			<input type="text" name="username" id="username" ng-model="username" value=""/>
 			
 		</div>
-		<div class="ic clearfix">
-			<label> password:</label>
-				<input type="password" name="password" />
-			
+		<div class="control-group">
+			<label for="password"><i class="icon-lock"></i> password:</label>
+			<input type="password"  id="password"name="password" ng-model="password"/>
 		</div>
-		<div class="ic clearfix">
-			<label> appcode:</label>
-				<input type="text" name="appcode" />
-			
+		<div class="control-group">
+			<label for="appcode"><i class="icon-barcode"></i> appcode:</label>
+			<input type="text" name="appcode" id="appcode" ng-model="appcode"/>
 		</div>
-		<div class="ic clearfix">	
-			<input type="submit" value="login"/>
+		<div class="form-actions">	
+			<input class="btn btn-primary" type="submit" value="login"/>
 		</div>	
+		</fieldset>
 	</form>	
 </div>

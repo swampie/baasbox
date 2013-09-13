@@ -80,6 +80,7 @@ public abstract class NodeDao  {
 		return document;
 	}
 	
+	
 
 	public void checkModelDocument(ODocument doc) throws InvalidModelException {
 		if (doc!=null && !doc.getClassName().equalsIgnoreCase(this.MODEL_NAME))
@@ -103,8 +104,8 @@ public abstract class NodeDao  {
 				ODocument user=udao.getByUserName(DbHelper.getCurrentUserName());
 				ODocument userVertex=user.field(FIELD_LINK_TO_VERTEX);
 				db.createEdge(userVertex,vertex,EDGE_CLASS_CREATED);
-			Logger.trace("Method End");
-			return doc;
+				Logger.trace("Method End");
+				return doc;
 		}catch (Throwable e){
 			throw e;
 		}
