@@ -1,12 +1,22 @@
 <div id="dashboard">
 	<div class="span4 menu">
-		<ul>
-			<li><a href="#">1</a>
-			<li><a href="#">2</a>
-			<li><a href="#">3</a>
-			<li><a href="#">4</a>
-		</ul>
-	</div> 
+				<div class="well nav-collapse sidebar-nav">
+					<ul class="nav nav-tabs nav-stacked main-menu">
+						<li class="nav-header hidden-tablet">Main</li>
+							<menuitem icon="home" path="dashboard">dashboard</menuitem>
+							<menuitem icon="cog" path="settings">settings</menuitem>
+							<menuitem icon="hdd" path="dbmanager">dbmanager</menuitem>
+						<li class="nav-header hidden-tablet">Users</li>
+							<menuitem icon="user" path="users">users</menuitem>
+						<li class="nav-header hidden-tablet">Documents</li>
+							<menuitem icon="book" path="collections">collections</menuitem>
+							<menuitem icon="file" path="documents">documents</menuitem>
+						<li class="nav-header hidden-tablet">Assets</li>
+							<menuitem icon="folder_open" path="assets">assets</menuitem>
+					</ul>
+					<label style="display:none" id="for-is-ajax" class="hidden-tablet" for="is-ajax"><input id="is-ajax" type="checkbox"> Ajax on menu</label>
+				</div><!--/.well -->
+			</div><!--/span--> 
 	<div class="span8 content">
 		<span>content</span>
 	</div>
