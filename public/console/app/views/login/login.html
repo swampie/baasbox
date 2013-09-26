@@ -1,22 +1,37 @@
-<div class="form-inline span10 offset3 login-form" ng-controller="LoginController">
+<div class="ui width fourtyfive form segment center" ng-controller="LoginController">
 	<form method="POST" ng-submit="login()">
-		<fieldset>
-		<div class="control-group">
-			<label for="username"><i class="icon-user"></i> username:</label>
-			<input type="text" name="username" id="username" ng-model="username" value=""/>
+		<div class="inline field">
+			<label for="username">username:</label>
+			<div class="ui left labeled icon input">
+				<input type="text" name="username" id="username" ng-model="username" value=""/>
+				<i class="user icon"></i>
+				<div class="ui corner label">
+            		<i class="icon asterisk"></i>
+          		</div>
+			</div>
 			
 		</div>
-		<div class="control-group">
-			<label for="password"><i class="icon-lock"></i> password:</label>
-			<input type="password"  id="password"name="password" ng-model="password"/>
+		<div class="inline field">
+			<label for="password">password:</label>
+			<div class="ui left labeled icon input">
+				<input type="password" name="password" id="password" ng-model="password" value=""/>
+				<i class="lock icon"></i>
+				<div class="ui corner label">
+            		<i class="icon asterisk"></i>
+          		</div>
+			</div>
 		</div>
-		<div class="control-group">
-			<label for="appcode"><i class="icon-barcode"></i> appcode:</label>
-			<input type="text" name="appcode" id="appcode" ng-model="appcode"/>
+		<div class="inline field">
+			<label for="appcode">appcode:</label>
+			<div class="ui left labeled icon input">
+				<input type="text" name="appcode" id="appcode" ng-model="appcode"/>
+				<i class="barcode icon"></i>
+				<div class="ui corner label">
+            		<i class="icon asterisk"></i>
+          		</div>
+			</div>
 		</div>
-		<div class="form-actions">	
-			<input class="btn btn-primary" type="submit" value="login"/>
-		</div>	
-		</fieldset>
+		<input class="ui button submit red" type="submit" value="login"/>
+			
 	</form>	
 </div>

@@ -1,20 +1,21 @@
-.login-form label{
-	min-width:90px;
+body {
+  font-family: "Open Sans", "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+  background: #FFFFFF;
+  margin: 0px;
+  padding: 0px;
+  color: #555555;
+  text-rendering: optimizeLegibility;
+  min-width: 320px;
 }
 
-div.menu ul li a span{
-	padding-left:8px;
+.ui.header {
+  font-family: 'Source Sans Pro', "Helvetica Neue", "Helvetica", "Arial", sans-serif;
 }
 
-div.menu ul li a:hover span{
-	padding-left:11px;
-	-webkit-transition: padding 0.2s linear;
-   	-moz-transition: padding 0.2s linear;
-    -o-transition: padding 0.2s linear;
-    -ms-transition: padding 0.2s linear;    
-    transition: padding 0.2s linear ;
+.ui.center {
+	margin-left:8.75%;
 }
 
-div.menu ul li.active a span{
-	padding-left:8px;
+.ui.width.fourtyfive {
+	max-width:45%;
 }

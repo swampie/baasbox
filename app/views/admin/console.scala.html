@@ -17,28 +17,25 @@
 	<link rel="shortcut icon" href="img/favicon.ico">
 	<link rel="icon" href="img/favicon.ico" />
 	<script src="app/js/modernizr-2.6.2.min.js"></script>
-	<link href='css/bootstrap-classic.min.css' rel='stylesheet'>
+	<link href='css/v2/semantic/css/semantic.min.css' rel='stylesheet'>
 	<link href='css/v2/baasbox.css' rel='stylesheet'>
 	
 </head>
 	<body>
-	<div class="container">
-		<div data-ng-controller="MainController">
-			<header>
-				<h1>Hello {{currentUser().user.name}}</h1>
+	<div class="ui vertical">
+		<div class="ui header sixteen wide column" data-ng-controller="MainController">
+			<h1>Hello {{currentUser().user.name}}</h1>
 				<span data-ng-show="isLoggedIn()">
 					<a data-ng-click="logout()">Logout</a>
 				</span>
-				
-			</header>
-		</div>
-		<div  data-ng-view></div>
+		</div>		
+		<div  data-ng-view class=""></div>
 	</div>
 		
 	</body>
 	<script type="text/javascript" src="@com.baasbox.controllers.routes.AllRoutes.javascriptRoutes"></script>
-	
 	<script src="app/js/jquery-1.7.2.min.js"></script>
+	<script src="css/v2/semantic/javascript/semantic.min.js"></script>
 	<!-- AngularJS -->
 	<script src="app/js/angular.min.js"></script>
 	<script src="app/js/angular-cookies.min.js"></script>
