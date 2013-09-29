@@ -1,23 +1,31 @@
-<div id="dashboard">
-	<div class="span4 menu">
-				<div class="well nav-collapse sidebar-nav">
-					<ul class="nav nav-tabs nav-stacked main-menu">
-						<li class="nav-header hidden-tablet">Main</li>
-							<menuitem icon="home" path="dashboard">dashboard</menuitem>
-							<menuitem icon="cog" path="settings">settings</menuitem>
-							<menuitem icon="hdd" path="dbmanager">dbmanager</menuitem>
-						<li class="nav-header hidden-tablet">Users</li>
-							<menuitem icon="user" path="users">users</menuitem>
-						<li class="nav-header hidden-tablet">Documents</li>
-							<menuitem icon="book" path="collections">collections</menuitem>
-							<menuitem icon="file" path="documents">documents</menuitem>
-						<li class="nav-header hidden-tablet">Assets</li>
-							<menuitem icon="folder_open" path="assets">assets</menuitem>
-					</ul>
+<div id="main-page" class="ui page grid">
+				<div class="two wide column">
+					<div class="ui vertical menu">
+						<div class="item">Main 
+							<div class="menu">
+								<menuitem class="item" icon="dashboard" path="dashboard">dashboard</menuitem>
+								<menuitem class="item" icon="archive" path="settings">settings</menuitem>
+								<menuitem class="item" icon="hdd" path="dbmanager">dbmanager</menuitem>
+							</div>
+						</div>
+						<div class="item">Users
+							<div class="menu">
+								<menuitem class="item" icon="user" path="users">users</menuitem>
+							</div>
+						</div>
+						<div class="item">Documents
+							<div class="menu">
+								<menuitem class="item" icon="book" path="collections">collections</menuitem>
+								<menuitem class="item" icon="file" path="documents">documents</menuitem>
+							</div>
+						</div>
+						<div class="item" >Assets
+							<div class="menu">
+								<menuitem class="item" icon="archive " path="assets">assets</menuitem>
+							</div>
+						</div>
+					</div>
 					<label style="display:none" id="for-is-ajax" class="hidden-tablet" for="is-ajax"><input id="is-ajax" type="checkbox"> Ajax on menu</label>
-				</div><!--/.well -->
-			</div><!--/span--> 
-	<div class="span8 content">
-		<span>content</span>
-	</div>
+				</div>
+	<div data-ui-view class="nine wide column"></div>
 </div>

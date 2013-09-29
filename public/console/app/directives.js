@@ -2,12 +2,13 @@ window.angular.module('baasbox.directives.menuitem', [])
 	.directive('menuitem',function($location){
 		return {
 			restrict: 'E',
-			template: '<li><a ng-click="callMenu()" ng-transclude><i ng-class="iconize()"></i></a></li>',
+			template: '<a ng-click="callMenu()" ng-transclude><i ng-class="iconize()"></i></a>',
 			transclude: true,
 			replace:true,
 			scope:{
 				path: '=path',
-				icon : '=icon'
+				icon : '=icon',
+				element: '=as'
 			},
 			
 			
@@ -16,7 +17,7 @@ window.angular.module('baasbox.directives.menuitem', [])
 				scope.path = iAttrs["path"];
 				scope.icon = iAttrs["icon"];
 				scope.iconize = function(){
-					return "icon-"+scope.icon.replace("_","-");
+					return "icon "+scope.icon.replace("_","-");
 				}
 				
 				if($location.path().substr(1) === scope.path){

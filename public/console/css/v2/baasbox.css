@@ -19,3 +19,20 @@ body {
 .ui.width.fourtyfive {
 	max-width:45%;
 }
+
+
+.ui.width.fiftyfive {
+	max-width:55%;
+}
+
+.ui.width.sixtyfive {
+	max-width:65%;
+}
+
+.ui.width.fiftyfive {
+	max-width:75%;
+}
+
+.ui.width.eightyfive {
+	max-width:85%;
+}

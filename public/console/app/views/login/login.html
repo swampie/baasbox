@@ -1,6 +1,11 @@
-<div class="ui width fourtyfive form segment center" ng-controller="LoginController">
-	<form method="POST" ng-submit="login()">
-		<div class="inline field">
+<div class="ui center">
+	<h1>logo</h1>
+</div>
+<div class="ui width fiftyfive form segment center" ng-controller="LoginController">
+	<h3 class="ui header green">Welcome to Baasbox administration console</h3>
+	<p>Some explanation blah blah blah</p>
+	<form method="POST" class="ui form three fields" ng-submit="login()">
+		<div class="field">
 			<label for="username">username:</label>
 			<div class="ui left labeled icon input">
 				<input type="text" name="username" id="username" ng-model="username" value=""/>
@@ -11,7 +16,7 @@
 			</div>
 			
 		</div>
-		<div class="inline field">
+		<div class="field">
 			<label for="password">password:</label>
 			<div class="ui left labeled icon input">
 				<input type="password" name="password" id="password" ng-model="password" value=""/>
@@ -21,7 +26,7 @@
           		</div>
 			</div>
 		</div>
-		<div class="inline field">
+		<div class="field">
 			<label for="appcode">appcode:</label>
 			<div class="ui left labeled icon input">
 				<input type="text" name="appcode" id="appcode" ng-model="appcode"/>
@@ -31,7 +36,8 @@
           		</div>
 			</div>
 		</div>
-		<input class="ui button submit red" type="submit" value="login"/>
+		<input class="ui button submit green" type="submit" value="login"/>
 			
 	</form>	
+	
 </div>
