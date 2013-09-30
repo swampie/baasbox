@@ -7,11 +7,8 @@ window.angular.module('baasbox.directives.menuitem', [])
 			replace:true,
 			scope:{
 				path: '=path',
-				icon : '=icon',
-				element: '=as'
+				icon : '=icon'
 			},
-			
-			
 			
 			link: function postLink(scope, iElement, iAttrs) {
 				scope.path = iAttrs["path"];
@@ -23,13 +20,14 @@ window.angular.module('baasbox.directives.menuitem', [])
 				if($location.path().substr(1) === scope.path){
 					iElement.addClass('active');
 				}
+				
 				scope.current = function(){
 					return iElement.hasClass('active');
 				}
 				
 				scope.callMenu = function(){
 					if(scope.current() != scope.path){
-						$location.path('/'+scope.path);
+						$location.path('/main/'+scope.path);
 					}
 				}
 			}
