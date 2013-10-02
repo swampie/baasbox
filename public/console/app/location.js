@@ -28,8 +28,8 @@ window.app.config(['$stateProvider','$urlRouterProvider',
 
 window.app.run(function($rootScope,$state,bbauth){
     $rootScope.$on('$stateChangeStart', function(evt, toState, toParams, fromState, fromParams) {
-        if( !bbauth.isAuth && toState != 'login' ){
-            evt.preventDefault();
+    	if( !bbauth.isAuth() && toState != 'login' ){
+    		evt.preventDefault();
             $state.transitionTo('login');
         }
     });
