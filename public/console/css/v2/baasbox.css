@@ -36,3 +36,18 @@ body {
 .ui.width.eightyfive {
 	max-width:85%;
 }
+
+.ui.widget{
+	text-align:center;
+	min-height:70px;
+}
+.ui.widget p.label{
+	margin-top:0.4em;
+}
+.ui.orange.segment{
+	border-top:0.2em solid orange
+}
+.ui.titled.segment>p{
+	background-color:gray;
+	margin:0;padding;0;
+}

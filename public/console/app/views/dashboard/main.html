@@ -1,1 +1,218 @@
-<h1>Welcome to  {{item}}</h1>
+<div id="dashboard" data-ng-controller="DashboardController">
+	<div class="ui three column grid">
+	<div class="ui column">
+		<div class="ui green raised segment widget">
+			<p class="label"><i class="icon user"></i> {{data.data.data.users}} <span>Users</span></p>
+			
+			
+		</div>
+	</div>
+	<div class="ui column">
+	<div class="ui red raised segment widget">
+		<p class="label"><i class="icon book"></i> {{data.data.data.collections_details | sum:'records'}} <span>Collections</span></p>
+	</div>
+	</div>
+	<div class="ui column">
+	<div class="ui orange raised segment widget">
+		<p class="label">latest version: <a href="{{version.url}}" target="_blank"> {{version.v}}</a></p>
+	</div>
+	</div>
+	</div>
+	
+	<div class="ui two column grid">
+		<div id="system" class="ui column">
+			<div class="ui top attached segment inverted teal">
+  				<p>System</p>
+			</div>
+  			<div class="ui top attached  menu">
+  				<a href="#mem" class="item active ">
+    				Memory
+  				</a>
+  				<a href="#os" class="item ">
+    				Os
+  				</a>
+  				<a href="#java" class="item ">
+    				Java
+  				</a>
+  				<a href="#db" class="item ">
+    				Database
+  				</a>
+				</div>
+				<div id="mem" class="ui bottom attached segment tabcontent">
+ 				 	<div class="ui divided list">
+  						<div class="item">
+    						<i class="circular coffee red icon"></i>
+    						<div class="content">
+      							<span class="header">max allocable memory:</span>
+    							<span class="description">{{data.data.memory.max_allocable_memory|formatmem:2}}</span>
+      						</div>
+  						</div>
+  						<div class="item">
+    						<i class="circular coffee yellow icon"></i>
+    						<div class="content">
+      							<span class="header">current allocated memory:</span>
+	    						<span class="description">{{data.data.memory.current_allocate_memory|formatmem:2}}</span>
+      						</div>
+  						</div>
+  						<div class="item">
+    						<i class="circular coffee green icon"></i>
+    						<div class="content ">
+      							<span class="header">current used memory</span>
+	      						<span class="description">{{data.data.memory.used_memory_in_the_allocate_memory|formatmem:2}}</span>
+      						</div>
+  						</div>
+					</div>
+				</div>
+				<div id="os" class="ui bottom attached segment hide tabcontent">
+ 				 	<div class="ui divided list">
+  						<div class="item">
+    						<i class="circular laptop icon"></i>
+    						<div class="content">
+      							<span class="header">name</span>
+    							<span class="description">{{data.data.os.os_name}}</span>
+      						</div>
+  						</div>
+  						<div class="item">
+    						<i class="circular save icon"></i>
+    						<div class="content">
+      							<span class="header">version</span>
+    							<span class="description">{{data.data.os.os_version}}</span>
+      						</div>
+  						</div>
+  						<div class="item">
+    						<i class="circular lightbulb icon"></i>
+    						<div class="content ">
+      							<span class="header">arch</span>
+      							<span class="description">{{data.data.os.os_arch}}</span>
+      						</div>
+  						</div>
+  						<div class="item">
+    						<i class="circular tasks icon"></i>
+    						<div class="content ">
+      							<span class="header">processors</span>
+      							<span class="description">{{data.data.os.processors}}</span>
+      						</div>
+  						</div>
+					</div>
+				</div>
+				<div id="java" class="ui bottom attached segment hide tabcontent">
+ 				 	<div class="ui divided list">
+  						<div class="item">
+    						<i class="circular save icon"></i>
+    						<div class="content">
+      							<span class="header">version</span>
+    							<span class="description">{{data.data.java.java_version}}</span>
+      						</div>
+  						</div>
+  						<div class="item">
+    						<i class="circular laptop icon"></i>
+    						<div class="content">
+      							<span class="header">vendor</span>
+    							<span class="description">{{data.data.java.java_vendor}}</span>
+      						</div>
+  						</div>
+  						<div class="item">
+    						<i class="circular lightbulb icon"></i>
+    						<div class="content ">
+      							<span class="header">class version</span>
+      							<span class="description">{{data.data.java.java_class_version}}</span>
+      						</div>
+  						</div>
+					</div>
+				</div>
+				<div id="db" class="ui bottom attached segment hide tabcontent">
+ 				 	<div class="ui divided list">
+  						<div class="item">
+    						<i class="circular save icon"></i>
+    						<div class="content">
+      							<span class="header">version</span>
+    							<span class="description">{{data.data.db.properties.version}}</span>
+      						</div>
+  						</div>
+  						<div class="item">
+    						<i class="circular fork code icon"></i>
+    						<div class="content">
+      							<span class="header">path</span>
+    							<span class="description">{{data.data.db.properties.path}}</span>
+      						</div>
+  						</div>
+  						<div class="item">
+    						<i class="circular lightbulb icon"></i>
+    						<div class="content ">
+      							<span class="header">size</span>
+      							<span class="description">{{data.data.db.size | formatmem:2}}</span>
+      						</div>
+  						</div>
+  						<div class="item">
+    						<i class="circular hdd icon"></i>
+    						<div class="content ">
+      							<span class="header">db size</span>
+      							<span class="description">{{data.data.db.physical_size | formatmem:2}}</span>
+      						</div>
+  						</div>
+					</div>
+				</div>
+			</div>
+		
+		<div class="ui column">
+			<div class="ui top attached segment inverted teal">
+  				<p>Documents</p>
+			</div>
+			<div class="ui bottom attached segment ">
+  				<table class="table table-striped">
+							  <thead>
+								  <tr>
+									  <th>Collection</th>
+									  <th>N. of Documents</th>
+									  <th>Size</th>                                        
+								  </tr>
+							  </thead>   
+							   <tbody>
+								   <tr ng-repeat="collection in data.data.collections_details">
+										<td>{{collection.name}}</td>
+										<td class="center">{{collection.records}}</td>
+										<td class="center">{{collection.size}}</td>                                
+									</tr>
+								</tbody>
+							</table>
+			</div>
+  					
+		</div>
+	</div>
+	<div class="ui horizontal icon divider">
+  		<i class="circular heart icon"></i>
+	</div>
+	<div class="ui one column grid">
+		<div class="ui column" id="news">
+			<div class="ui top attached segment inverted teal">
+  				<p>News from baasbox</p>
+			</div>
+			<div class="ui top attached  menu">
+  				<a href="#latest" class="item active ">
+    				Latest
+  				</a>
+  				<a href="#platform" class="item ">
+    				Os
+  				</a>
+			</div>
+			<div id="latest" class="ui bottom attached segment tabcontent">
+				<div class="ui divided list">
+				<div ng-repeat="n in newsFeed" class="item">
+				<div class="content">
+					<div class="header">
+						<a href="{{n.link}}" target="_blank" >{{n.title}}</a>
+					</div>
+					<div class="description">
+					{{n.contentSnippet}}
+					</div>
+				</div>
+					
+				</div>
+				</div>
+			</div>
+			<div id="platform" class="ui bottom attached segment tabcontent">
+				<h1>bye</h1>
+			</div>
+		</div>
+	</div>
+</div>

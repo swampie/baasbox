@@ -1,5 +1,5 @@
 /**
- * javascript functions for the Admin GUI 
+new * javascript functions for the Admin GUI 
  */
 var userDataArray;
 var settingDataArray;

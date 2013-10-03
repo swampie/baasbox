@@ -28,3 +28,38 @@ service('bbauth', function($cookieStore){
 	};
 	return authObject;
 });
+
+window.angular.module('baasbox.services.statistics', ['ngResource']).
+factory('statistics', function($resource){
+	return {
+		getClient: function(bbAuth){
+			return $resource('/admin/dbStatistics', {}, {
+				get: {
+					method:'GET',
+					headers:{'Content-Type':'application/json; charset=UTF-8','X-BB-SESSION':bbAuth.getUser()['X-BB-SESSION']}
+				}
+			});
+		}
+	}
+});
+window.angular.module('baasbox.services.latest', ['ngResource']).
+factory('latest', function($resource){
+	return {
+		getClient: function(bbAuth){
+			return $resource('/admin/version/latest', {}, {
+				get: {
+					method:'GET',
+					headers:{'Content-Type':'application/json; charset=UTF-8','X-BB-SESSION':bbAuth.getUser()['X-BB-SESSION']}
+				}
+			});
+		}
+	}
+});
+
+window.angular.module('baasbox.services.rss', []).
+factory('rss', function($http){
+	return {
+		parseFeed: function (url) {  return $http.jsonp('//ajax.googleapis.com/ajax/services/feed/load?v=1.0&num=50&callback=JSON_CALLBACK&q=' + encodeURIComponent(url));         
+		}
+	}
+});

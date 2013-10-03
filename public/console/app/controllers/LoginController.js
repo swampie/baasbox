@@ -1,6 +1,6 @@
 window.angular.module('baasbox.controllers.login', [])
-  .controller('LoginController', ['$scope','$http','bbsession','bbauth',
-    function($scope,$http,$bbsession,$bbauth) {
+  .controller('LoginController', ['$scope','bbsession','bbauth',
+    function($scope,$bbsession,$bbauth) {
 	  		//init module
     		$scope.username = '';
     		$scope.password = '';
@@ -13,6 +13,7 @@ window.angular.module('baasbox.controllers.login', [])
     				
     				$bbauth.setUser(session.data);
     				console.log("Logged in:"+$bbauth.getUser());
+    				
     			});
     			
     		}

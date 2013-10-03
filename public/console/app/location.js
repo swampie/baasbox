@@ -10,9 +10,13 @@ window.app.config(['$stateProvider','$urlRouterProvider',
         	url:'/main',
             templateUrl: 'app/views/dashboard/dashboard.html'
         }).
-        state('dashboard.item', {
-        	url:'/:item',
+        state('dashboard.dashboard', {
+        	url:'/dashboard',
             templateUrl: 'app/views/dashboard/main.html'
+        }).
+        state('dashboard.settings', {
+        	url:'/settings',
+            templateUrl: 'app/views/settings/main.html'
         })/*.
         otherwise({
             redirectTo: '/login'
@@ -28,7 +32,8 @@ window.app.config(['$stateProvider','$urlRouterProvider',
 
 window.app.run(function($rootScope,$state,bbauth){
     $rootScope.$on('$stateChangeStart', function(evt, toState, toParams, fromState, fromParams) {
-    	if( !bbauth.isAuth() && toState != 'login' ){
+    	if( !bbauth.isAuth() && toState.name != 'login' ){
+    		console.log(toState)
     		evt.preventDefault();
             $state.transitionTo('login');
         }
