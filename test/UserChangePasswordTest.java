@@ -21,16 +21,24 @@ import static play.test.Helpers.HTMLUNIT;
 import static play.test.Helpers.PUT;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeApplication;
+import static play.test.Helpers.route;
 import static play.test.Helpers.routeAndCall;
 import static play.test.Helpers.running;
 import static play.test.Helpers.testServer;
 
+import java.io.IOException;
+
 import javax.ws.rs.core.HttpHeaders;
 import javax.ws.rs.core.MediaType;
 
+import org.apache.commons.lang.exception.ExceptionUtils;
 import org.junit.Test;
 
-import play.Logger;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import com.baasbox.service.logging.BaasBoxLogger;
 import play.libs.F.Callback;
 import play.mvc.Result;
 import play.mvc.Http.Status;
@@ -65,6 +73,59 @@ public class UserChangePasswordTest extends AbstractUserTest
 		return "/userChangePasswordPayload.json";
 	}
 
+	
+	@Test
+	public void testRouteResetPasswordStep1()
+	{
+		running
+		(
+			getFakeApplication(), 
+			new Runnable() 
+			{
+				public void run() 
+				{
+					//create a user
+					String sFakeUser = new AdminUserFunctionalTest().routeCreateNewUser();
+
+					//try to reset password: fails because there i no email attribute
+					FakeRequest request = new FakeRequest("GET", "/user/"+sFakeUser+"/password/reset");
+					request = request.withHeader(TestConfig.KEY_APPCODE, TestConfig.VALUE_APPCODE);
+					Result result = routeAndCall(request);
+					assertRoute(result, "testRouteChangePassword 1", Status.BAD_REQUEST, "the \\\"email\\\" attribute is not defined into the user's private profile", true);					
+				
+					//set the email attribute
+					//change its role
+                    FakeRequest request1 = new FakeRequest(PUT, "/me");
+                    String sPwd = getPayloadFieldValue("/adminUserCreatePayload.json", "password");
+					String sAuthEnc = TestConfig.encodeAuth(sFakeUser, sPwd);
+                    request1 = request1.withHeader(TestConfig.KEY_APPCODE, TestConfig.VALUE_APPCODE);
+                    request1 = request1.withHeader(TestConfig.KEY_AUTH, sAuthEnc);
+                    
+                    ObjectMapper mapper = new ObjectMapper();
+                    JsonNode actualObj=null;
+					try {
+						actualObj = mapper.readTree("{\"visibleByTheUser\":{\"email\":\"john@example.com\"}}");
+					} catch (JsonProcessingException e) {
+						assertFail(ExceptionUtils.getStackTrace(e));
+					} catch (IOException e) {
+						assertFail(ExceptionUtils.getStackTrace(e));
+					}
+                    request1 = request1.withJsonBody(actualObj,PUT);
+                    request1 = request1.withHeader("Content-Type", "application/json");
+                    result = route(request1);
+                    assertRoute(result, "testRouteChangePassword 2", Status.OK, "john@example.com", true);
+
+                    //try to reset password: fails because there i no smtp server defined
+					request = new FakeRequest("GET", "/user/"+sFakeUser+"/password/reset");
+					request = request.withHeader(TestConfig.KEY_APPCODE, TestConfig.VALUE_APPCODE);
+					result = routeAndCall(request);
+					assertRoute(result, "testRouteChangePassword 3", Status.BAD_REQUEST, "Cannot send mail to reset the password:  Could not reach the mail server. Please contact the server administrator", true);					
+				}
+			});
+	}
+	
+	
+	
 	@Test
 	public void testRouteChangePassword()
 	{
@@ -85,8 +146,8 @@ public class UserChangePasswordTest extends AbstractUserTest
 					request = request.withHeader(TestConfig.KEY_AUTH, sAuthEnc);
 					request = request.withJsonBody(getPayload("/userChangePasswordPayload.json"), getMethod());
 					Result result = routeAndCall(request);
-					if (Logger.isDebugEnabled()) Logger.debug("testRouteChangePassword request: " + request.getWrappedRequest().headers());
-					if (Logger.isDebugEnabled()) Logger.debug("testRouteChangePassword result: " + contentAsString(result));
+					if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("testRouteChangePassword request: " + request.getWrappedRequest().headers());
+					if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("testRouteChangePassword result: " + contentAsString(result));
 					assertRoute(result, "testRouteChangePassword", Status.OK, null, false);
 
 					String sPwdChanged = getPayloadFieldValue("/userChangePasswordPayload.json", "new");

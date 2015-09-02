@@ -20,8 +20,10 @@
 
 package core;
 
+import static play.test.Helpers.POST;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeApplication;
+import static play.test.Helpers.routeAndCall;
 import static play.test.Helpers.status;
 import static play.test.Helpers.testServer;
 
@@ -33,19 +35,19 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 import javax.ws.rs.core.MediaType;
 
+import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.http.entity.mime.content.FileBody;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.protocol.HTTP;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.fluentlenium.adapter.FluentTest;
 import org.hamcrest.CoreMatchers;
 import org.json.JSONArray;
@@ -59,15 +61,21 @@ import org.junit.rules.ErrorCollector;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.htmlunit.HtmlUnitDriver;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-
 import play.Configuration;
-import play.Logger;
 import play.Play;
+import play.mvc.Http.Status;
 import play.mvc.Result;
 import play.test.FakeApplication;
+import play.test.FakeRequest;
 import play.test.TestServer;
+
+import com.baasbox.service.logging.BaasBoxLogger;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 public abstract class AbstractTest extends FluentTest
 {
@@ -86,6 +94,21 @@ public abstract class AbstractTest extends FluentTest
 	private int nStatusCode = -1;
 	private boolean fUseCollector = false;
 
+	public String createNewUser(String username) {
+		String sFakeUser = username + UUID.randomUUID();
+		// Prepare test user
+		JsonNode node = updatePayloadFieldValue("/adminUserCreatePayload.json", "username", sFakeUser);
+
+		// Create user
+		FakeRequest request = new FakeRequest(POST, "/user");
+		request = request.withHeader(TestConfig.KEY_APPCODE, TestConfig.VALUE_APPCODE);
+		request = request.withHeader(TestConfig.KEY_AUTH, TestConfig.AUTH_ADMIN_ENC);
+		request = request.withJsonBody(node, POST);
+		Result result = routeAndCall(request);
+		assertRoute(result, "Create user.", Status.CREATED, null, false);
+		return sFakeUser;
+	}
+	
 	protected static void resetHeaders(){
 		mHeaders.clear();
 	}
@@ -93,12 +116,21 @@ public abstract class AbstractTest extends FluentTest
 		return fakeApplication(additionalConfigurations.asMap());
 	}
 	
+	protected static FakeApplication getFakeApplicationWithDefaultConf(){
+		return fakeApplication();
+	}
+	
 	protected static TestServer getTestServer(){
 		return testServer(TestConfig.SERVER_PORT,getFakeApplication());
 	}
+	
+	protected static TestServer getTestServerWithDefaultConf(){
+		return testServer(TestConfig.SERVER_PORT,getFakeApplicationWithDefaultConf());
+	}
+	
 	protected  static Configuration additionalConfigurations=null;
 	static{
-	    Config additionalConfig = ConfigFactory.parseFile(new File("conf/rootTest.conf"));
+	    Config additionalConfig = ConfigFactory.parseFile(new File("conf/rootTest.conf")).resolve();
 	    additionalConfigurations = new Configuration(additionalConfig);
 	}
 
@@ -206,7 +238,7 @@ public abstract class AbstractTest extends FluentTest
 	
 	private int httpRequest(String sUrl, String sMethod, JsonNode payload, Map<String, String> mParameters)
 	{
-		Logger.info("\n\nREQUEST:\n"+sMethod+ " " + sUrl+"\nHEADERS: " + mHeaders+"\nParameters: " +mParameters + "\nPayload: " + payload+"\n");
+		BaasBoxLogger.info("\n\nREQUEST:\n"+sMethod+ " " + sUrl+"\nHEADERS: " + mHeaders+"\nParameters: " +mParameters + "\nPayload: " + payload+"\n");
 		HttpURLConnection conn = null;
         BufferedReader br = null;
 	    int nRet = 0;
@@ -336,7 +368,7 @@ public abstract class AbstractTest extends FluentTest
 		        }
 		        setResponse(sb.toString().trim());
 	    	}
-	    	Logger.info("\nRESPONSE\nHTTP code: "+nRet+"\nContent: " + sResponse + "\n");
+	    	BaasBoxLogger.info("\nRESPONSE\nHTTP code: "+nRet+"\nContent: " + sResponse + "\n");
 	    } 
 	    catch (Exception ex) 
 	    {
@@ -382,7 +414,7 @@ public abstract class AbstractTest extends FluentTest
         }
         catch(Exception e)
         {
-            Assert.fail("Unable to get HttpConnection "+e.getMessage());
+            Assert.fail("Unable to get HttpConnection "+ExceptionUtils.getMessage(e));
         }
 
         return conn;
@@ -433,6 +465,15 @@ public abstract class AbstractTest extends FluentTest
 		JsonNode node = getPayload(sPayload);
 		((ObjectNode)node).put(sFieldName, sValue);
 
+		return node;
+	}
+	
+	protected JsonNode updatePayloadFieldValue(String sPayload, String sFieldName, String[] values)
+	{
+		JsonNode node = getPayload(sPayload);
+		ObjectMapper mapper = new ObjectMapper();
+		ArrayNode array = mapper.valueToTree(Arrays.asList(values));
+		((ObjectNode)node).putArray(sFieldName).addAll(array);
 		return node;
 	}
 	
@@ -525,7 +566,7 @@ public abstract class AbstractTest extends FluentTest
 				}
 				else
 				{
-					Assert.assertTrue(sTestName + ". Unexpected content <" + sContent + "> was expcted <" + sExpctedContent + ">", sContent.contains(sExpctedContent));
+					Assert.assertTrue(sTestName + ". Unexpected content <" + sContent + "> was expected <" + sExpctedContent + ">", sContent.contains(sExpctedContent));
 				}
 			}
 			else
@@ -572,6 +613,29 @@ public abstract class AbstractTest extends FluentTest
 				assertContent(sContent);
 			}
 		}
+	}
+	
+	
+	protected String getUuid(Result result)
+	{
+		return getUuid(contentAsString(result));
+	}
+	
+	protected String getUuid(String content)
+	{
+		String sUuid = null;
+		Object json = toJSON(content);
+		try
+		{
+			JSONObject jo = (JSONObject)json;
+			sUuid = jo.getJSONObject("data").getString("id");
+		}
+		catch (Exception ex)
+		{
+			Assert.fail("Cannot get UUID (id) value: " + ex.getMessage() + "\n The json object is: \n" + json);
+		}
+		
+		return sUuid;
 	}
 	
 	protected Object toJSON(String s)

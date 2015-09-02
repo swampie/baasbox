@@ -21,6 +21,7 @@ package com.baasbox.controllers;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -29,7 +30,7 @@ import java.util.zip.ZipInputStream;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 
-import play.Logger;
+import com.baasbox.service.logging.BaasBoxLogger;
 import play.libs.Json;
 import play.mvc.Controller;
 import play.mvc.Http;
@@ -43,6 +44,7 @@ import com.baasbox.controllers.actions.filters.ConnectToDBFilter;
 import com.baasbox.controllers.actions.filters.RootCredentialWrapFilter;
 import com.baasbox.dao.exception.FileNotFoundException;
 import com.baasbox.dao.exception.SqlInjectionException;
+import com.baasbox.exception.OpenTransactionException;
 import com.baasbox.exception.UserNotFoundException;
 import com.baasbox.metrics.BaasBoxMetric;
 import com.baasbox.service.dbmanager.DbManagerService;
@@ -60,7 +62,7 @@ public class Root extends Controller {
 		Http.RequestBody body = request().body();
 
 		JsonNode bodyJson= body.asJson();
-		if (Logger.isDebugEnabled()) Logger.debug("resetAdminPassword bodyJson: " + bodyJson);
+		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("resetAdminPassword bodyJson: " + bodyJson);
 		//check and validate input
 		if (bodyJson==null) return badRequest("The body payload cannot be empty.");		
 		if (!bodyJson.has("password"))	return badRequest("The 'password' field is missing into the body");
@@ -73,8 +75,11 @@ public class Root extends Controller {
 		} catch (SqlInjectionException e) {
 			return badRequest("The password is not valid");
 		} catch (UserNotFoundException e) {
-			Logger.error("User 'admin' not found!");
+			BaasBoxLogger.error("User 'admin' not found!");
 		    return internalServerError("User 'admin' not found!");
+		} catch (OpenTransactionException e) {
+			BaasBoxLogger.error (ExceptionUtils.getFullStackTrace(e));
+			throw new RuntimeException(e);
 		}
 		return ok("Admin password reset");
 	}
@@ -157,7 +162,7 @@ public class Root extends Controller {
 			try {
 				fileName = DbManagerService.exportDb(appcode);
 			} catch (FileNotFoundException e) {
-				return internalServerError(e.getMessage());
+				return internalServerError(ExceptionUtils.getMessage(e));
 			}
 			return status(202,Json.toJson(fileName));
 		}
@@ -246,7 +251,7 @@ public class Root extends Controller {
 					zipFile.delete();
 					return ok();		
 				}catch(Exception e){
-					Logger.error(ExceptionUtils.getStackTrace(e));
+					BaasBoxLogger.error(ExceptionUtils.getStackTrace(e));
 					return internalServerError(ExceptionUtils.getStackTrace(e));
 				}finally{
 					try {
@@ -261,4 +266,53 @@ public class Root extends Controller {
 				return badRequest("The form was submitted without a multipart file field.");
 			}
 		}
+		
+		//DB size and alert thresholds
+		/**
+		 * /root/configuration (POST)
+		 * 
+		 * this method allows to set (or override) just two configuration parameter (at the moment)
+		 * the db size Threshold in bytes:
+		 * 		baasbox.db.size 
+		 * A percentage needed by the console to show alerts on dashboard when DB size is near the defined Threshold
+		 * 		baasbox.db.alert
+		 * 
+		 * @return a 200 OK with the new values
+		 */
+		@With({RootCredentialWrapFilter.class})
+		public static Result overrideConfiguration(){
+			Http.RequestBody body = request().body();
+			JsonNode bodyJson= body.asJson();
+			JsonNode newDBAlert = bodyJson.get(BBConfiguration.DB_ALERT_THRESHOLD);
+			JsonNode newDBSize = bodyJson.get(BBConfiguration.DB_SIZE_THRESHOLD);
+			try{
+				if (newDBAlert!=null && !newDBAlert.isInt() && newDBAlert.asInt()<1) throw new IllegalArgumentException(BBConfiguration.DB_ALERT_THRESHOLD + " must be a positive integer value");
+				if (newDBSize!=null && !newDBSize.isLong() && newDBSize.asInt()<0) throw new IllegalArgumentException(BBConfiguration.DB_SIZE_THRESHOLD + " must be a positive integer value, or 0 to disable it");
+			}catch (Throwable e){
+				return badRequest(ExceptionUtils.getMessage(e));
+			}
+			if (newDBAlert!=null) BBConfiguration.setDBAlertThreshold(newDBAlert.asInt());
+			if (newDBSize!=null) BBConfiguration.setDBSizeThreshold(BigInteger.valueOf(newDBSize.asLong()));
+			HashMap returnMap = new HashMap();
+			returnMap.put(BBConfiguration.DB_ALERT_THRESHOLD, BBConfiguration.getDBAlertThreshold());
+			returnMap.put(BBConfiguration.DB_SIZE_THRESHOLD, BBConfiguration.getDBSizeThreshold());
+			try {
+				return ok(new ObjectMapper().writeValueAsString(returnMap));
+			} catch (JsonProcessingException e) {
+				return internalServerError(ExceptionUtils.getMessage(e));
+			}
+		}
+		
+		@With({RootCredentialWrapFilter.class})
+		public static Result getOverridableConfiguration(){
+			HashMap returnMap = new HashMap();
+			returnMap.put(BBConfiguration.DB_ALERT_THRESHOLD, BBConfiguration.getDBAlertThreshold());
+			returnMap.put(BBConfiguration.DB_SIZE_THRESHOLD, BBConfiguration.getDBSizeThreshold());
+			try {
+				return ok(new ObjectMapper().writeValueAsString(returnMap));
+			} catch (JsonProcessingException e) {
+				return internalServerError(ExceptionUtils.getMessage(e));
+			}
+		}
+		
 }

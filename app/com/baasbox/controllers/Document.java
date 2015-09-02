@@ -21,12 +21,10 @@ import java.security.InvalidParameterException;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.commons.lang3.StringUtils;
-import com.fasterxml.jackson.databind.JsonNode;
 
-import com.google.common.base.Joiner;
-import play.Logger;
 import play.mvc.BodyParser;
 import play.mvc.Controller;
 import play.mvc.Http;
@@ -40,37 +38,63 @@ import com.baasbox.controllers.actions.filters.ConnectToDBFilter;
 import com.baasbox.controllers.actions.filters.ExtractQueryParameters;
 import com.baasbox.controllers.actions.filters.UserCredentialWrapFilter;
 import com.baasbox.controllers.actions.filters.UserOrAnonymousCredentialsFilter;
-import com.baasbox.dao.GenericDao;
+import com.baasbox.dao.PermissionJsonWrapper;
 import com.baasbox.dao.PermissionsHelper;
 import com.baasbox.dao.exception.DocumentNotFoundException;
 import com.baasbox.dao.exception.InvalidCollectionException;
 import com.baasbox.dao.exception.InvalidCriteriaException;
 import com.baasbox.dao.exception.InvalidModelException;
 import com.baasbox.dao.exception.UpdateOldVersionException;
+import com.baasbox.db.DbHelper;
 import com.baasbox.enumerations.Permissions;
+import com.baasbox.exception.AclNotValidException;
+import com.baasbox.exception.InvalidJsonException;
 import com.baasbox.exception.RoleNotFoundException;
 import com.baasbox.exception.UserNotFoundException;
+import com.baasbox.service.logging.BaasBoxLogger;
 import com.baasbox.service.query.MissingNodeException;
 import com.baasbox.service.query.PartsLexer;
 import com.baasbox.service.query.PartsLexer.Part;
 import com.baasbox.service.query.PartsLexer.PartValidationException;
 import com.baasbox.service.query.PartsParser;
+import com.baasbox.service.storage.BaasBoxPrivateFields;
 import com.baasbox.service.storage.DocumentService;
 import com.baasbox.util.IQueryParametersKeys;
 import com.baasbox.util.JSONFormats;
+import com.baasbox.util.JSONFormats.Formats;
 import com.baasbox.util.QueryParams;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
 import com.orientechnologies.orient.core.exception.OSecurityAccessException;
 import com.orientechnologies.orient.core.exception.OSecurityException;
-import com.orientechnologies.orient.core.id.ORID;
 import com.orientechnologies.orient.core.record.impl.ODocument;
+import com.orientechnologies.orient.core.storage.ORecordDuplicatedException;
 
 
 public class Document extends Controller {
 
+	private static final String JSON_BODY_NULL = "The body payload cannot be empty. Hint: put in the request header Content-Type: application/json";
+
+
 	private static String prepareResponseToJson(ODocument doc){
 		response().setContentType("application/json");
-		return JSONFormats.prepareResponseToJson(doc,JSONFormats.Formats.DOCUMENT);
+		Formats format;
+		try{
+			DbHelper.filterOUserPasswords(true);
+			if (BooleanUtils.toBoolean(Http.Context.current().request().getQueryString("withAcl")))
+			{
+				format=JSONFormats.Formats.DOCUMENT_WITH_ACL;
+				return JSONFormats.prepareResponseToJson(doc,format,true);
+			}
+			else
+			{
+				format=JSONFormats.Formats.DOCUMENT;
+				return JSONFormats.prepareResponseToJson(doc,format,false);
+			}
+		}finally{
+			DbHelper.filterOUserPasswords(false);
+		}
 	}
 	
 	private static String prepareResponseToObjectJson(ODocument doc){
@@ -80,7 +104,19 @@ public class Document extends Controller {
 
 	private static String prepareResponseToJson(List<ODocument> listOfDoc) throws IOException{
 		response().setContentType("application/json");
-		return  JSONFormats.prepareResponseToJson(listOfDoc,JSONFormats.Formats.DOCUMENT);
+		Formats format;
+		try{
+			DbHelper.filterOUserPasswords(true);
+			if (BooleanUtils.toBoolean(Http.Context.current().request().getQueryString("withAcl"))){
+				format=JSONFormats.Formats.DOCUMENT_WITH_ACL;
+				return  JSONFormats.prepareResponseToJson(listOfDoc,format,true);
+			}else{
+				format=JSONFormats.Formats.DOCUMENT;
+				return  JSONFormats.prepareResponseToJson(listOfDoc,format);
+			}
+		}finally{
+			DbHelper.filterOUserPasswords(false);
+		}
 	}
 
 
@@ -91,31 +127,31 @@ public class Document extends Controller {
 	 */
 	@With ({UserOrAnonymousCredentialsFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 	public static Result getCount(String collectionName){
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
-		if (Logger.isTraceEnabled()) Logger.trace("collectionName: " + collectionName);
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("collectionName: " + collectionName);
 
 		long count;
 		try {
 			Context ctx=Http.Context.current.get();
 			QueryParams criteria = (QueryParams) ctx.args.get(IQueryParametersKeys.QUERY_PARAMETERS);
 			count = DocumentService.getCount(collectionName,criteria);
-			if (Logger.isTraceEnabled()) Logger.trace("count: " + count);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("count: " + count);
 		} catch (InvalidCollectionException e) {
-			if (Logger.isDebugEnabled()) Logger.debug (collectionName + " is not a valid collection name");
+			if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug (collectionName + " is not a valid collection name");
 			return notFound(collectionName + " is not a valid collection name");
 		} catch (Exception e){
-			Logger.error(ExceptionUtils.getFullStackTrace(e));
-			return internalServerError(e.getMessage());
+			BaasBoxLogger.error(ExceptionUtils.getFullStackTrace(e));
+			return internalServerError(ExceptionUtils.getMessage(e));
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		response().setContentType("application/json");
 		return ok("{\"count\": "+ count +" }");
 	}
 
 	@With ({UserOrAnonymousCredentialsFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 	public static Result getDocuments(String collectionName){
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
-		if (Logger.isTraceEnabled()) Logger.trace("collectionName: " + collectionName);
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("collectionName: " + collectionName);
 
 		List<ODocument> result;
 		String ret="{[]}";
@@ -123,13 +159,13 @@ public class Document extends Controller {
 			Context ctx=Http.Context.current.get();
 			QueryParams criteria = (QueryParams) ctx.args.get(IQueryParametersKeys.QUERY_PARAMETERS);
 			result = DocumentService.getDocuments(collectionName,criteria);
-			if (Logger.isTraceEnabled()) Logger.trace("count: " + result.size());
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("count: " + result.size());
 		} catch (InvalidCollectionException e) {
-			if (Logger.isDebugEnabled()) Logger.debug (collectionName + " is not a valid collection name");
+			if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug (collectionName + " is not a valid collection name");
 			return notFound(collectionName + " is not a valid collection name");
 		} catch (Exception e){
-			Logger.error(ExceptionUtils.getFullStackTrace(e));
-			return internalServerError(e.getMessage());
+			BaasBoxLogger.error(ExceptionUtils.getFullStackTrace(e));
+			return internalServerError(ExceptionUtils.getMessage(e));
 		}
 
 		try{
@@ -138,30 +174,18 @@ public class Document extends Controller {
 			return internalServerError(ExceptionUtils.getFullStackTrace(e));
 		}
 
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		return ok(ret);
-	}		
-
-	private static String getRidByString(String id , boolean isUUID) throws RidNotFoundException {
-		String rid=null;
-		if (isUUID) {
-			if (Logger.isDebugEnabled()) Logger.debug("id is an UUID, try to get a valid RID");
-			ORID orid=GenericDao.getInstance().getRidNodeByUUID(id);
-			if (orid==null) throw new RidNotFoundException(id);
-			rid = orid.toString();
-			if (Logger.isDebugEnabled()) Logger.debug("Retrieved RID: " + rid);
-		}else rid="#"+id;
-		return rid;
 	}
 
-	@With ({UserOrAnonymousCredentialsFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
+    @With ({UserOrAnonymousCredentialsFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 	public static Result queryDocument(String collectionName,String id,boolean isUUID,String parts){
 		if(parts==null || StringUtils.isEmpty(parts)){
 			return getDocument(collectionName, id, isUUID);
 		} else{
-			if (Logger.isTraceEnabled()) Logger.trace("Method Start");
-			if (Logger.isTraceEnabled()) Logger.trace("collectionName: " + collectionName);
-			if (Logger.isTraceEnabled()) Logger.trace("rid: " + id);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("collectionName: " + collectionName);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("rid: " + id);
 			ODocument doc;
 			try {
 				
@@ -179,15 +203,15 @@ public class Document extends Controller {
 					}
 				}
 				}catch(PartValidationException pve){
-					return badRequest(pve.getMessage());
+					return badRequest(ExceptionUtils.getMessage(pve));
 				}
 				PartsParser pl = new PartsParser(queryParts);
-				String rid = getRidByString(id, isUUID);
+				String rid = DocumentService.getRidByString(id, isUUID);
 				doc=DocumentService.get(collectionName, rid,pl);
 				
 				if (doc==null) return notFound();
 			}catch (IllegalArgumentException e) {
-				return badRequest(e.getMessage()!=null?e.getMessage():"");
+				return badRequest(ExceptionUtils.getMessage(e)!=null?ExceptionUtils.getMessage(e):"");
 			} catch (InvalidCollectionException e) {
 				return notFound(collectionName + " is not a valid collection name");
 			} catch (InvalidModelException e) {
@@ -197,11 +221,11 @@ public class Document extends Controller {
 			} catch (DocumentNotFoundException e) {
 				return notFound(id + " not found"); 
 			} catch (RidNotFoundException e) {
-				return notFound(e.getMessage());
+				return notFound(ExceptionUtils.getMessage(e));
 			} catch (InvalidCriteriaException e) {
-				return badRequest(e.getMessage()!=null?e.getMessage():"");
+				return badRequest(ExceptionUtils.getMessage(e)!=null?ExceptionUtils.getMessage(e):"");
 			}
-			if (Logger.isTraceEnabled()) Logger.trace("Method End");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 
 			return ok(prepareResponseToObjectJson(doc));
 		}
@@ -209,16 +233,16 @@ public class Document extends Controller {
 
 	@With ({UserOrAnonymousCredentialsFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 		public static Result getDocument(String collectionName, String id, boolean isUUID){
-			if (Logger.isTraceEnabled()) Logger.trace("Method Start");
-			if (Logger.isTraceEnabled()) Logger.trace("collectionName: " + collectionName);
-			if (Logger.isTraceEnabled()) Logger.trace("rid: " + id);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("collectionName: " + collectionName);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("rid: " + id);
 			ODocument doc;
 			try {
-				String rid = getRidByString(id, isUUID);
+				String rid = DocumentService.getRidByString(id, isUUID);
 				doc=DocumentService.get(collectionName, rid);
 				if (doc==null) return notFound();
 			}catch (IllegalArgumentException e) {
-				return badRequest(e.getMessage()!=null?e.getMessage():"");
+				return badRequest(ExceptionUtils.getMessage(e)!=null?ExceptionUtils.getMessage(e):"");
 			} catch (InvalidCollectionException e) {
 				return notFound(collectionName + " is not a valid collection name");
 			} catch (InvalidModelException e) {
@@ -228,28 +252,28 @@ public class Document extends Controller {
 			} catch (DocumentNotFoundException e) {
 				return notFound(id + " not found"); 
 			} catch (RidNotFoundException e) {
-				return notFound(e.getMessage()); 
+				return notFound(ExceptionUtils.getMessage(e)); 
 			} 
-			if (Logger.isTraceEnabled()) Logger.trace("Method End");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 
 			return ok(prepareResponseToJson(doc));
 		}
 
 	@With ({UserCredentialWrapFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 		public static Result getDocumentByRid(String rid){
-			if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 			rid="#"+rid;
-			if (Logger.isTraceEnabled()) Logger.trace("rid: " + rid);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("rid: " + rid);
 			ODocument doc;
 			try {
 				doc=DocumentService.get(rid);
 				if (doc==null) return notFound();
 			} catch (IllegalArgumentException e) {
-				return badRequest(e.getMessage());
+				return badRequest(ExceptionUtils.getMessage(e));
 			}catch (ODatabaseException e){
 				return notFound(rid + " unknown");  
 			} 
-			if (Logger.isTraceEnabled()) Logger.trace("Method End");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 
 			return ok(prepareResponseToJson(doc));
 		}
@@ -257,41 +281,56 @@ public class Document extends Controller {
 	@With ({UserCredentialWrapFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 		@BodyParser.Of(BodyParser.Json.class)
 		public static Result createDocument(String collection){
-			if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 			Http.RequestBody body = request().body();
-
-			JsonNode bodyJson= body.asJson();
-			if (Logger.isTraceEnabled()) Logger.trace("creating document in collection: " + collection);
-			if (Logger.isTraceEnabled()) Logger.trace("bodyJson: " + bodyJson);
-			if (bodyJson==null) return badRequest("The body payload cannot be empty. Hint: put in the request header Content-Type: application/json");
-			ODocument document;
+			ODocument document=null;
+			JsonNode bodyJson = null;
 			try{
-				document=DocumentService.create(collection, bodyJson); 
-				if (Logger.isTraceEnabled()) Logger.trace("Document created: " + document.getRecord().getIdentity());
+				bodyJson= body.asJson();
+				if (bodyJson==null) return badRequest(JSON_BODY_NULL);
+				if (!bodyJson.isObject()) throw new InvalidJsonException("The body must be a JSON object");
+				if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("creating document in collection: " + collection);
+				if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("bodyJson: " + bodyJson);
+				document=DocumentService.create(collection, (ObjectNode)bodyJson); 
+				if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Document created: " + document.getRecord().getIdentity());
 			}catch (InvalidCollectionException e){
-				return notFound(e.getMessage());
+				return notFound(ExceptionUtils.getMessage(e));
+			}catch (InvalidJsonException e){
+				return badRequest("JSON not valid. HINT: check if it is not just a JSON collection ([..]), a single element ({\"element\"}) or you are trying to pass a @version:null field");
+			}catch (UpdateOldVersionException e){
+				return badRequest(ExceptionUtils.getMessage(e));
+			} catch (InvalidModelException e) {
+				return badRequest("ACL fields are not valid: " + ExceptionUtils.getMessage(e));
+			} catch (ORecordDuplicatedException e) {
+				return badRequest("Provided ID already exists: " + bodyJson.get(BaasBoxPrivateFields.ID.toString()));
 			}catch (Throwable e){
-				Logger.error(ExceptionUtils.getFullStackTrace(e));
-				return internalServerError(ExceptionUtils.getFullStackTrace(e));
+					BaasBoxLogger.error(ExceptionUtils.getFullStackTrace(e));
+					return internalServerError(ExceptionUtils.getFullStackTrace(e));
 			}
-			if (Logger.isTraceEnabled()) Logger.trace("Method End");
+			
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 			return ok(prepareResponseToJson(document));
 		}
 
 	@With ({UserCredentialWrapFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 		@BodyParser.Of(BodyParser.Json.class)
 		public static Result updateDocument(String collectionName, String id, boolean isUUID){
-			if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 			Http.RequestBody body = request().body();
 			JsonNode bodyJson= body.asJson();
-			if (bodyJson==null) return badRequest("The body payload cannot be empty. Hint: put in the request header Content-Type: application/json");
+			if (bodyJson==null) return badRequest(JSON_BODY_NULL);
 			if (bodyJson.get("@version")!=null && !bodyJson.get("@version").isInt()) return badRequest("@version field must be an Integer");
-			if (Logger.isTraceEnabled()) Logger.trace("updateDocument collectionName: " + collectionName);
-			if (Logger.isTraceEnabled()) Logger.trace("updateDocument id: " + id);
 			ODocument document=null;
 			try{
-				String rid=getRidByString(id,isUUID);
-				document=com.baasbox.service.storage.DocumentService.update(collectionName, rid, bodyJson);  
+				if (!bodyJson.isObject()) throw new InvalidJsonException("The body must be an JSON object");
+				if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("updateDocument collectionName: " + collectionName);
+				if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("updateDocument id: " + id);
+				String rid= DocumentService.getRidByString(id, isUUID);
+				document=com.baasbox.service.storage.DocumentService.update(collectionName, rid, (ObjectNode)bodyJson);
+			} catch (DocumentNotFoundException e) {
+				return notFound("Document " + id + " not found");
+			}catch (AclNotValidException e){
+				return badRequest("ACL fields are not valid: " + ExceptionUtils.getMessage(e));		
 			}catch (UpdateOldVersionException e){
 				return status(CustomHttpCode.DOCUMENT_VERSION.getBbCode(),"You are attempting to update an older version of the document. Your document version is " + e.getVersion1() + ", the stored document has version " + e.getVersion2());	
 			}catch (RidNotFoundException e){
@@ -308,28 +347,31 @@ public class Document extends Controller {
 				return notFound(id + " unknown");  
 			}catch (OSecurityException e){
 				return forbidden("You have not the right to modify " + id);  
+			}catch (InvalidJsonException e){
+				return badRequest("JSON not valid. HINT: check if it is not just a JSON collection ([..]), a single element ({\"element\"}) or you are trying to pass a @version:null field");				
 			}catch (Throwable e){
-				Logger.error(ExceptionUtils.getFullStackTrace(e));
+				BaasBoxLogger.error(ExceptionUtils.getFullStackTrace(e));
 				return internalServerError(ExceptionUtils.getFullStackTrace(e));
 			}
 			if (document==null) return notFound("Document " + id + " was not found in the collection " + collectionName);
-			if (Logger.isTraceEnabled()) Logger.trace("Method End");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 			return ok(prepareResponseToJson(document));
 		}
 
 	@With ({UserCredentialWrapFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 		@BodyParser.Of(BodyParser.Json.class)
 		public static Result updateDocumentWithParts(String collectionName, String id, boolean isUUID,String parts){
-			if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 			Http.RequestBody body = request().body();
 			JsonNode bodyJson= body.asJson();
-			if (Logger.isTraceEnabled()) Logger.trace("updateDocument collectionName: " + collectionName);
-			if (Logger.isTraceEnabled()) Logger.trace("updateDocument id: " + id);
-			if (bodyJson==null) return badRequest("The body payload cannot be empty. Hint: put in the request header Content-Type: application/json");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("updateDocument collectionName: " + collectionName);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("updateDocument id: " + id);
+			if (!bodyJson.isObject()) return badRequest("The body must be an JSON object");
+			if (bodyJson==null) return badRequest(JSON_BODY_NULL);
 			if (bodyJson.get("data")==null) return badRequest("The body payload must have a data field. Hint: modify your content to have a \"data\" field");
 			ODocument document=null;
 			try{
-				String rid=getRidByString(id, isUUID);
+				String rid= DocumentService.getRidByString(id, isUUID);
 				String[] tokens = parts.split("/");
 				PartsLexer lexer = new PartsLexer();
 				List<Part> objParts = new ArrayList<Part>();
@@ -338,15 +380,15 @@ public class Document extends Controller {
 						String p = java.net.URLDecoder.decode(tokens[i], "UTF-8");
 						objParts.add(lexer.parse(p, i+1));
 					}catch(PartValidationException pve){
-						return badRequest(pve.getMessage());
+						return badRequest(ExceptionUtils.getMessage(pve));
 					}catch(Exception e){
 						return badRequest("Unable to parse document parts");
 					}
 				}
 				PartsParser pp = new PartsParser(objParts);
-				document=com.baasbox.service.storage.DocumentService.update(collectionName, rid, bodyJson,pp);   
+				document=com.baasbox.service.storage.DocumentService.update(collectionName, rid, (ObjectNode)bodyJson,pp);   
 			}catch (MissingNodeException e){
-				return notFound(e.getMessage());
+				return notFound(ExceptionUtils.getMessage(e));
 			}catch (InvalidCollectionException e){
 				return notFound(collectionName + " is not a valid collection name");
 			}catch (InvalidModelException e){
@@ -360,82 +402,82 @@ public class Document extends Controller {
 			}catch (OSecurityException e){
 				return forbidden("You have not the right to modify the document " + id);
 			}catch (RidNotFoundException rnfe){
-					return notFound(rnfe.getMessage());	
+					return notFound(ExceptionUtils.getMessage(rnfe));	
 			}catch (Throwable e){
-				Logger.error(ExceptionUtils.getFullStackTrace(e));
+				BaasBoxLogger.error(ExceptionUtils.getFullStackTrace(e));
 				return internalServerError(ExceptionUtils.getFullStackTrace(e));
 			}
 			if (document==null) return notFound("Document " + id + " was not found in the collection " + collectionName);
-			if (Logger.isTraceEnabled()) Logger.trace("Method End");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 			return ok(prepareResponseToJson(document));
 		}
 
 	@With ({UserCredentialWrapFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 		public static Result deleteDocument(String collectionName, String id, boolean isUUID){
-			if (Logger.isTraceEnabled()) Logger.trace("Method Start");
-			if (Logger.isTraceEnabled()) Logger.trace("deleteDocument collectionName: " + collectionName);
-			if (Logger.isTraceEnabled()) Logger.trace("deleteDocument rid: " + id);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("deleteDocument collectionName: " + collectionName);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("deleteDocument rid: " + id);
 			try {
-				String rid=getRidByString(id,isUUID);
+				String rid= DocumentService.getRidByString(id, isUUID);
 				DocumentService.delete(collectionName,rid);
 			}catch (RidNotFoundException e){
 				return notFound("id  " + id + " not found");  
 			}catch (OSecurityException e){
 				return forbidden("You have not the right to delete " + id);  
 			} catch (InvalidCollectionException e) {
-				return notFound(e.getMessage());
+				return notFound(ExceptionUtils.getMessage(e));
 			} catch (Throwable e ){
-				internalServerError(e.getMessage());
+				internalServerError(ExceptionUtils.getMessage(e));
 			}
-			if (Logger.isTraceEnabled()) Logger.trace("Method End");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 			return ok("");
 		}
 
 	@With ({UserCredentialWrapFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 		public static Result grantToUser(String collectionName, String rid, String username, String action, boolean isUUID){
-			if (Logger.isTraceEnabled()) Logger.trace("Method Start");
-			if (Logger.isTraceEnabled()) Logger.trace("grant collectionName: " + collectionName);
-			if (Logger.isTraceEnabled()) Logger.trace("grant rid: " + rid);
-			if (Logger.isTraceEnabled()) Logger.trace("grant username: " + username);
-			if (Logger.isTraceEnabled()) Logger.trace("grant action: " + action);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant collectionName: " + collectionName);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant rid: " + rid);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant username: " + username);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant action: " + action);
 			Result res=grantOrRevokeToUser(collectionName,rid,username,action,true, isUUID);
-			if (Logger.isTraceEnabled()) Logger.trace("Method End");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 			return res;
 		}
 
 	@With ({UserCredentialWrapFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 		public static Result revokeToUser(String collectionName, String rid, String username, String action, boolean isUUID){
-			if (Logger.isTraceEnabled()) Logger.trace("Method Start");
-			if (Logger.isTraceEnabled()) Logger.trace("grant collectionName: " + collectionName);
-			if (Logger.isTraceEnabled()) Logger.trace("grant rid: " + rid);
-			if (Logger.isTraceEnabled()) Logger.trace("grant username: " + username);
-			if (Logger.isTraceEnabled()) Logger.trace("grant action: " + action);	  
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant collectionName: " + collectionName);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant rid: " + rid);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant username: " + username);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant action: " + action);	  
 			Result res=grantOrRevokeToUser(collectionName,rid,username,action,false, isUUID);
-			if (Logger.isTraceEnabled()) Logger.trace("Method End");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 			return res;
 		}
 
 	@With ({UserCredentialWrapFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 		public static Result grantToRole(String collectionName, String rid, String rolename, String action, boolean isUUID){
-			if (Logger.isTraceEnabled()) Logger.trace("Method Start");
-			if (Logger.isTraceEnabled()) Logger.trace("grant collectionName: " + collectionName);
-			if (Logger.isTraceEnabled()) Logger.trace("grant rid: " + rid);
-			if (Logger.isTraceEnabled()) Logger.trace("grant rolename: " + rolename);
-			if (Logger.isTraceEnabled()) Logger.trace("grant action: " + action);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant collectionName: " + collectionName);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant rid: " + rid);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant rolename: " + rolename);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant action: " + action);
 			Result res=grantOrRevokeToRole(collectionName,rid,rolename,action,true, isUUID);
-			if (Logger.isTraceEnabled()) Logger.trace("Method End");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 			return res;
 		}
 
 	@With ({UserCredentialWrapFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
 		public static Result revokeToRole(String collectionName, String rid, String rolename, String action, boolean isUUID){
-			if (Logger.isTraceEnabled()) Logger.trace("Method Start");
-			if (Logger.isTraceEnabled()) Logger.trace("grant collectionName: " + collectionName);
-			if (Logger.isTraceEnabled()) Logger.trace("grant rid: " + rid);
-			if (Logger.isTraceEnabled()) Logger.trace("grant rolename: " + rolename);
-			if (Logger.isTraceEnabled()) Logger.trace("grant action: " + action);	  
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant collectionName: " + collectionName);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant rid: " + rid);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant rolename: " + rolename);
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("grant action: " + action);	  
 			Result res=grantOrRevokeToRole(collectionName,rid,rolename,action,false, isUUID);
-			if (Logger.isTraceEnabled()) Logger.trace("Method End");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 			return res;
 		}
 
@@ -443,7 +485,7 @@ public class Document extends Controller {
 				String username, String action, boolean grant, boolean isUUID) {
 			try {
 				//converts uuid in rid
-				String rid=getRidByString(id,isUUID);			
+				String rid= DocumentService.getRidByString(id, isUUID);
 				Permissions permission=PermissionsHelper.permissionsFromString.get(action.toLowerCase());
 				if (permission==null) return badRequest(action + " is not a valid action");
 				if (grant) DocumentService.grantPermissionToUser(collectionName, rid, permission, username);
@@ -451,7 +493,7 @@ public class Document extends Controller {
 			} catch (RidNotFoundException e) {
 				return notFound("id " + id + " not found");
 			} catch (IllegalArgumentException e) {
-				return badRequest(e.getMessage());
+				return badRequest(ExceptionUtils.getMessage(e));
 			} catch (UserNotFoundException e) {
 				return notFound("user " + username + " not found");
 			} catch (InvalidCollectionException e) {
@@ -465,7 +507,7 @@ public class Document extends Controller {
 			} catch (OSecurityException e ){
 				return Results.forbidden();				
 			} catch (Throwable e ){
-				return internalServerError(e.getMessage());
+				return internalServerError(ExceptionUtils.getMessage(e));
 			}
 			return ok();
 		}//grantOrRevokeToUser
@@ -476,13 +518,13 @@ public class Document extends Controller {
 				Permissions permission=PermissionsHelper.permissionsFromString.get(action.toLowerCase());
 				if (permission==null) return badRequest(action + " is not a valid action");
 				//converts uuid in rid
-				String rid = getRidByString(id, isUUID);
+				String rid = DocumentService.getRidByString(id, isUUID);
 				if (grant) DocumentService.grantPermissionToRole(collectionName, rid, permission, rolename);
 				else       DocumentService.revokePermissionToRole(collectionName, rid, permission, rolename);
 			} catch (RidNotFoundException e) {
 				return notFound("id " + id + " no found");
 			} catch (IllegalArgumentException e) {
-				return badRequest(e.getMessage());
+				return badRequest(ExceptionUtils.getMessage(e));
 			} catch (RoleNotFoundException e) {
 				return notFound("role " + rolename + " not found");
 			} catch (InvalidCollectionException e) {
@@ -496,8 +538,41 @@ public class Document extends Controller {
 			} catch (OSecurityException e ){
 				return Results.forbidden();				
 			} catch (Throwable e ){
-				return internalServerError(e.getMessage());
+				return internalServerError(ExceptionUtils.getMessage(e));
 			}
 			return ok();
 		}//grantOrRevokeToRole
+		
+		
+		@With ({UserCredentialWrapFilter.class,ConnectToDBFilter.class,ExtractQueryParameters.class})
+		@BodyParser.Of(BodyParser.Json.class)
+		public static Result updateAcl(String collectionName, String uuid){
+			Http.RequestBody body = request().body();
+			ObjectNode bodyJson= (ObjectNode)body.asJson();
+			if (bodyJson==null) return badRequest(JSON_BODY_NULL);
+			PermissionJsonWrapper acl;
+			ODocument doc=null;
+			try {
+				acl = new PermissionJsonWrapper(bodyJson, true);
+				doc=DocumentService.setAcl(collectionName, uuid, acl);
+			} catch (AclNotValidException e) {
+				return badRequest("ACL fields are not valid: " + ExceptionUtils.getMessage(e));
+			} catch (IllegalArgumentException e) {
+				return badRequest(ExceptionUtils.getMessage(e));
+			} catch (InvalidCollectionException e) {
+				return notFound("collection " + collectionName + " not found");
+			} catch (InvalidModelException e) {
+				return badRequest(uuid + " does not belong to the " + collectionName + " collection");
+			} catch (DocumentNotFoundException e) {
+				return notFound("document " + uuid + " not found. Hint: has the user the correct rights on it?");
+			} catch (OSecurityAccessException e ){
+				return Results.forbidden();
+			} catch (OSecurityException e ){
+				return Results.forbidden();				
+			} catch (Throwable e ){
+				return internalServerError(ExceptionUtils.getFullStackTrace(e));
+			}
+			return ok(prepareResponseToJson(doc));
+		}
+		
 	}

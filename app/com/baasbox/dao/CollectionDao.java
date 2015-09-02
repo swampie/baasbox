@@ -16,13 +16,15 @@
  */
 package com.baasbox.dao;
 
-import play.Logger;
+import com.baasbox.service.logging.BaasBoxLogger;
 
 import com.baasbox.dao.exception.CollectionAlreadyExistsException;
 import com.baasbox.dao.exception.InvalidCollectionException;
+import com.baasbox.dao.exception.InvalidModelException;
 import com.baasbox.dao.exception.SqlInjectionException;
 import com.baasbox.db.DbHelper;
 import com.baasbox.enumerations.DefaultRoles;
+import com.baasbox.exception.OpenTransactionException;
 import com.orientechnologies.orient.core.db.record.OIdentifiable;
 import com.orientechnologies.orient.core.index.OIndex;
 import com.orientechnologies.orient.core.metadata.schema.OClass;
@@ -35,6 +37,7 @@ public class CollectionDao extends NodeDao {
 	private final static String MODEL_NAME="_BB_Collection";
 	public final static String NAME="name";
 	private static final String COLLECTION_NAME_INDEX = "_BB_Collection.name";
+	public static final String COLLECTION_NAME_REGEX="(?i)^[A-Z-][A-Z0-9_-]*$";
 	
 	public static CollectionDao getInstance(){
 		return new CollectionDao();
@@ -53,24 +56,46 @@ public class CollectionDao extends NodeDao {
 	/***
 	 * Creates an entry into the ODocument-Collection and create a new Class named "collectionName"
 	 * @param collectionName
-	 * @return
-	 * @throws Throwable 
+	 * @return an ODocument instance representing the collection
+	 * @throws CollectionAlreadyExistsException 
+	 * @throws OpenTransactionException, CollectionAlreadyExistsException, InvalidCollectionException, InvalidModelException, Throwable
 	 */
-	public ODocument create(String collectionName) throws Throwable {
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+	public ODocument create(String collectionName) throws OpenTransactionException, CollectionAlreadyExistsException, InvalidCollectionException, InvalidModelException, Throwable {
+		if (DbHelper.isInTransaction()) throw new OpenTransactionException("Cannot create a collection within an open transaction");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+
+		if (Character.isDigit(collectionName.charAt(0))){
+			throw new InvalidCollectionException("Collection names cannot start by a digit");
+		}
+		if (collectionName.contains(";")){
+			throw new InvalidCollectionException("Collection cannot contain ;");
+		}
+		if (collectionName.contains(":")){
+			throw new InvalidCollectionException("Collection cannot contain :");
+		}
+		if (collectionName.contains(".")){
+			throw new InvalidCollectionException("Collection cannot contain .");
+		}		
+		if (collectionName.contains("@")){
+			throw new InvalidCollectionException("Collection cannot contain @");
+		}
+		if (collectionName.startsWith("_")){
+			throw new InvalidCollectionException("Collection cannot start with _");
+		}		
+		if (!collectionName.matches(COLLECTION_NAME_REGEX)){
+			throw new InvalidCollectionException("Collection name must be complaint with the regular expression: " + COLLECTION_NAME_REGEX);
+		}
+		if(collectionName.toUpperCase().startsWith("_BB_")){
+			throw new InvalidCollectionException("Collection name is not valid: it can't be prefixed with _BB_");
+		}
 		try {
 			if (existsCollection(collectionName)) throw new CollectionAlreadyExistsException("Collection " + collectionName + " already exists");
 		}catch (SqlInjectionException e){
 			throw new InvalidCollectionException(e);
 		}
-		if (Character.isDigit(collectionName.charAt(0))){
-			throw new InvalidCollectionException("Collection names cannot start by a digit");
-		}
 		ODocument doc = super.create();
 		doc.field("name",collectionName);
-		if(collectionName.toUpperCase().startsWith("_BB_")){
-			throw new InvalidCollectionException("Collection name is not valid: it can't be prefixed with _BB_");
-		}
+
 		save(doc);
 		
 		//create new class
@@ -86,20 +111,20 @@ public class CollectionDao extends NodeDao {
 		anonymousRole.addRule(ODatabaseSecurityResources.CLUSTER + "." + collectionName, ORole.PERMISSION_READ);
 		PermissionsHelper.grantRead(doc, registeredRole);
 		PermissionsHelper.grantRead(doc, anonymousRole);
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		return doc;
 	}//getNewModelInstance(String collectionName)
 	
 	public boolean existsCollection(String collectionName) throws SqlInjectionException{
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		OIndex idx = db.getMetadata().getIndexManager().getIndex(COLLECTION_NAME_INDEX);
 		OIdentifiable record = (OIdentifiable) idx.get( collectionName );
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		return (record!=null) ;
 	}
 	
 	public ODocument getByName(String collectionName) throws SqlInjectionException{
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		OIndex idx = db.getMetadata().getIndexManager().getIndex(COLLECTION_NAME_INDEX);
 		OIdentifiable record = (OIdentifiable) idx.get( collectionName );
 		if (record==null) return null;
@@ -142,14 +167,14 @@ public class CollectionDao extends NodeDao {
 			//commit
 			DbHelper.commitTransaction();
 			
-			//drop the collection class
+			//drop the collection class outside collection
 			String dropCollection= "drop class " + name;
 			gdao.executeCommand(dropCollection, new Object[] {});
 			
 		} catch (Exception e) {
 			//rollback in case of error
 			DbHelper.rollbackTransaction();
-			if (Logger.isDebugEnabled()) Logger.debug ("An error occured deleting the collection " + name, e);
+			if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug ("An error occured deleting the collection " + name, e);
 			throw e;
 		}
 	}//delete

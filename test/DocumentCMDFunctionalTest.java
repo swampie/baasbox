@@ -20,19 +20,28 @@
 import static play.test.Helpers.DELETE;
 import static play.test.Helpers.GET;
 import static play.test.Helpers.HTMLUNIT;
+import static play.test.Helpers.POST;
 import static play.test.Helpers.PUT;
 import static play.test.Helpers.routeAndCall;
 import static play.test.Helpers.running;
+import static org.junit.Assert.fail;
 
+import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
+import java.util.UUID;
 
 import javax.ws.rs.core.MediaType;
 
+import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.http.HttpHeaders;
 import org.json.JSONObject;
 import org.junit.Assert;
 import org.junit.Test;
+
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import play.libs.F.Callback;
 import play.mvc.Http.Status;
@@ -97,12 +106,34 @@ public class DocumentCMDFunctionalTest extends AbstractDocumentTest
 					Result result = routeCreateDocument(getRouteAddress(sFakeCollection));
 					assertRoute(result, "testRouteCMDDocument CREATE", Status.OK, null, true);
 					String sCreationDate = getCreationDate();
-					if (!sCreationDate.matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.\\d{3}\\+\\d{4}")) {
+					if (!sCreationDate.matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.\\d{3}[\\+-]\\d{4}")) {
 						 Assert.fail("_creationDate field is in wrong format: " + sCreationDate);
 					}
 				}
 			}
 		);
+	}
+	@Test
+	public void testRouteCreateWithGivenID()
+	{
+		running	(getFakeApplication(), new Runnable() {
+				public void run() {
+					String sFakeCollection = new AdminCollectionFunctionalTest().routeCreateCollection();
+					String id=UUID.randomUUID().toString();
+					ObjectMapper om=new ObjectMapper();
+					String docString="{\"id\":\""+id+"\",\"key\":\"value_"+id+"\"}";
+				 	FakeRequest request = new FakeRequest(POST, getRouteAddress(sFakeCollection));
+					request = request.withHeader(TestConfig.KEY_APPCODE, TestConfig.VALUE_APPCODE);
+					request = request.withHeader(TestConfig.KEY_AUTH, TestConfig.AUTH_ADMIN_ENC);
+					try {
+						request = request.withJsonBody(om.readTree(docString));
+					} catch (Exception e) {
+						fail(ExceptionUtils.getFullStackTrace(e));
+					}
+					Result result = routeAndCall(request); 
+					assertRoute(result, "testRouteCreateWithGivenID CREATE", Status.OK, "\"id\":\""+id+"\",\"key\":\"value_"+id+"\"", true);
+				}
+		});
 	}
 	
 	@Test
@@ -351,6 +382,14 @@ public class DocumentCMDFunctionalTest extends AbstractDocumentTest
 					result = routeAndCall(request);
 					assertRoute(result, "testAccessDocumentsWithoutAuth.get_all", Status.OK, "\"result\":\"ok\",\"data\":[{\"", true);
 
+					//since the resource is now available to anonymous users, it should be visible to registered users too issue #195
+					
+					String fakeUsername=createNewUser("registeredUser");
+					request = new FakeRequest(GET, getRouteAddress(sFakeCollection) + "/" + sUUID);
+					request = request.withHeader(TestConfig.KEY_APPCODE, TestConfig.VALUE_APPCODE);
+					request = request.withHeader(TestConfig.KEY_AUTH, TestConfig.encodeAuth(fakeUsername+":passw1"));
+					result = routeAndCall(request);
+					assertRoute(result, "testAccessDocumentsFromRegisteredUser", Status.OK, "\"result\":\"ok\",\"data\":{\"", true);
 					
 					//Admin revokes  the grant to the document
 					request = new FakeRequest(DELETE, getRouteAddress(sFakeCollection) + "/" + sUUID + "/read/role/anonymous");
@@ -370,6 +409,24 @@ public class DocumentCMDFunctionalTest extends AbstractDocumentTest
 				}
 			}
 		);		
+	}
+	
+	//#615 - NPE when creating a document without a body
+	@Test
+	public void testEmptyBody(){
+		running
+		(
+			getFakeApplication(), 
+			new Runnable() 	{
+				public void run() {
+					String sFakeCollection = new AdminCollectionFunctionalTest().routeCreateCollection();		
+					FakeRequest request=new FakeRequest("POST",getRouteAddress(sFakeCollection));
+					request = request.withHeader(TestConfig.KEY_APPCODE, TestConfig.VALUE_APPCODE);
+					request = request.withHeader(TestConfig.KEY_AUTH, TestConfig.AUTH_ADMIN_ENC);
+					Result result = routeAndCall(request);
+					assertRoute(result, "testAccessDocumentsWithoutAuth.revoke", Status.BAD_REQUEST, "The body payload cannot be empty.", true);
+				}
+			});					
 	}
 	
 	@Test
@@ -626,7 +683,7 @@ public class DocumentCMDFunctionalTest extends AbstractDocumentTest
 		}
 		catch (Exception ex)
 		{
-			Assert.fail("Cannot get _author value: " + ex.getMessage());
+			Assert.fail("Cannot get _creation_date value: " + ex.getMessage());
 		}
 		
 		return sRet;
@@ -648,4 +705,6 @@ public class DocumentCMDFunctionalTest extends AbstractDocumentTest
 		
 		return sRet;
 	}
+	
+	
 }

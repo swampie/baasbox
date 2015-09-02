@@ -127,7 +127,9 @@ public class AdminUserFunctionalTest extends AbstractAdminTest
 					request = request.withHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_FORM_URLENCODED);
 					result = routeAndCall(request);
 					assertRoute(result, "testRouteCreateAndUpdateUser: Check updated user.", Status.OK, null, false);
-
+					assertRoute(result, "testRouteCreateAndUpdateUser check username", Status.OK, "name\":\""+sFakeUser+"\"", true);
+					assertRoute(result, "testRouteCreateAndUpdateUser check role", Status.OK, "roles\":[{\"name\":\"registered\",\"isrole\":true}", true);
+					
 					assertCheckUserUpdate(contentAsString(result), sFakeUser);
 				}
 			}
@@ -222,7 +224,8 @@ public class AdminUserFunctionalTest extends AbstractAdminTest
 						PUT,
 						"/adminUserUpdateNoRolePayload.json"
 					);
-					assertServer("testServerUpdateUserNoRole", Status.BAD_REQUEST, "The 'role' field is missing", true);
+					//since #602 this is a valid operation!
+					assertServer("testServerUpdateUserNoRole", Status.OK, null, false);
 				}
 	        }
 		);
@@ -250,7 +253,7 @@ public class AdminUserFunctionalTest extends AbstractAdminTest
 						PUT,
 						"/adminUserUpdateNotExistentRole.json"
 					);
-					assertServer("testServerUpdateUserNoRole", Status.BAD_REQUEST, " is not a role", true);
+					assertServer("testServerUpdateUserNotExistentRole", Status.BAD_REQUEST, " is not a role", true);
 				}
 	        }
 		);

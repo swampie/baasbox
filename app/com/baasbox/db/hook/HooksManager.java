@@ -24,7 +24,7 @@ import java.util.Set;
 
 import org.apache.commons.collections.IteratorUtils;
 
-import play.Logger;
+import com.baasbox.service.logging.BaasBoxLogger;
 
 import com.orientechnologies.orient.core.db.record.ODatabaseRecordTx;
 import com.orientechnologies.orient.core.hook.ORecordHook;
@@ -33,56 +33,63 @@ import com.orientechnologies.orient.core.hook.ORecordHook.HOOK_POSITION;
 public class HooksManager { 
 	public static void registerAll(ODatabaseRecordTx db){
 		
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
-		if (Logger.isDebugEnabled()) Logger.debug("Registering hooks...");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Registering hooks...");
 		//we have to check if the hooks have been already registered since the connections could be reused due to pool 
 		boolean register=true;
-		//OrientDB 1.7: Map<ORecordHook, HOOK_POSITION> hooks = db.getHooks();
-		//Iterator<ORecordHook> it =hooks.keySet().iterator();
-		
-		//OrientDB 1.6:
-		Set<ORecordHook> hooks = db.getHooks();
-		Iterator<ORecordHook> it = hooks.iterator();
-		
+		//OrientDB 1.7: 
+		Map<ORecordHook, HOOK_POSITION> hooks = db.getHooks();
+		Iterator<ORecordHook> it =hooks.keySet().iterator();
+
 		while (it.hasNext()){		
 			if (it.next() instanceof BaasBoxHook) {
-				if (Logger.isDebugEnabled()) Logger.debug("BaasBox hooks already registerd for this connection");
+				if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("BaasBox hooks already registerd for this connection");
 				register=false;
 				break;
 			}
 		}
 		if (register){
-			if (Logger.isDebugEnabled()) Logger.debug("Registering BaasBox hooks... start");
+			if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Registering BaasBox hooks... start");
 			db.registerHook(Audit.getIstance(),HOOK_POSITION.REGULAR);
-			if (Logger.isDebugEnabled()) Logger.debug("Registering BaasBox hooks... done");
+			db.registerHook(HidePassword.getIstance(),HOOK_POSITION.LAST);
+			if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Registering BaasBox hooks... done");
 		}
-		if (Logger.isDebugEnabled()) Logger.debug("Hooks: "+ db.getHooks());
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Hooks: "+ db.getHooks());
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		
 	}
 	
 	public static void unregisteredAll(ODatabaseRecordTx db){
 
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		
-		if (Logger.isDebugEnabled()) Logger.debug("unregistering hooks...");
-		//OrientDB 1.7: Map<ORecordHook, HOOK_POSITION> hooks = db.getHooks();
-		//List hs = IteratorUtils.toList(hooks.keySet().iterator());
-		
-		//OrientDB 1.6:
-		Set<ORecordHook> hooks = db.getHooks();
-		List hs = IteratorUtils.toList(hooks.iterator());
-		
+		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("unregistering hooks...");
+		//OrientDB 1.7: 
+		Map<ORecordHook, HOOK_POSITION> hooks = db.getHooks();
+		List hs = IteratorUtils.toList(hooks.keySet().iterator());
 		Iterator<ORecordHook> it =hs.iterator();
 		while (it.hasNext()){
 			ORecordHook h = it.next();
 			if (h instanceof BaasBoxHook) {
-				if (Logger.isDebugEnabled()) Logger.debug("Removing "+ ((BaasBoxHook) h).getHookName() + " hook");
+				if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Removing "+ ((BaasBoxHook) h).getHookName() + " hook");
 				db.unregisterHook(h);
 			}
 		}
 				
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
-
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
+	}
+	
+	public static void enableHidePasswordHook(ODatabaseRecordTx db,boolean enable){
+		Map<ORecordHook, HOOK_POSITION> hooks = db.getHooks();
+		List hs = IteratorUtils.toList(hooks.keySet().iterator());
+		Iterator<ORecordHook> it =hs.iterator();
+		while (it.hasNext()){
+			ORecordHook h = it.next();
+			if (h instanceof HidePassword) {
+				if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Enable: "+ enable+ " " + ((BaasBoxHook) h).getHookName() + " hook");
+				((HidePassword) h).enable(enable);
+				break;
+			}
+		}
 	}
 }

@@ -22,6 +22,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.security.InvalidParameterException;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,7 +33,6 @@ import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 
-import play.Logger;
 import play.Play;
 import play.libs.F.Promise;
 import play.libs.Json;
@@ -56,7 +56,9 @@ import com.baasbox.controllers.actions.filters.ExtractQueryParameters;
 import com.baasbox.controllers.actions.filters.UserCredentialWrapFilter;
 import com.baasbox.dao.RoleDao;
 import com.baasbox.dao.UserDao;
+import com.baasbox.dao.exception.AdminCannotChangeRoleException;
 import com.baasbox.dao.exception.CollectionAlreadyExistsException;
+import com.baasbox.dao.exception.EmailAlreadyUsedException;
 import com.baasbox.dao.exception.FileNotFoundException;
 import com.baasbox.dao.exception.InvalidCollectionException;
 import com.baasbox.dao.exception.InvalidModelException;
@@ -66,12 +68,20 @@ import com.baasbox.dao.exception.UserAlreadyExistsException;
 import com.baasbox.db.DbHelper;
 import com.baasbox.enumerations.DefaultRoles;
 import com.baasbox.exception.ConfigurationException;
+import com.baasbox.exception.InvalidJsonException;
+import com.baasbox.exception.OpenTransactionException;
 import com.baasbox.exception.RoleAlreadyExistsException;
 import com.baasbox.exception.RoleNotFoundException;
 import com.baasbox.exception.RoleNotModifiableException;
 import com.baasbox.exception.UserNotFoundException;
 import com.baasbox.service.dbmanager.DbManagerService;
+import com.baasbox.service.events.EventSource;
+import com.baasbox.service.logging.BaasBoxLogger;
 import com.baasbox.service.permissions.PermissionTagService;
+import com.baasbox.service.push.PushNotInitializedException;
+import com.baasbox.service.push.PushSwitchException;
+import com.baasbox.service.push.providers.PushInvalidApiKeyException;
+import com.baasbox.service.storage.BaasBoxPrivateFields;
 import com.baasbox.service.storage.CollectionService;
 import com.baasbox.service.storage.StatisticsService;
 import com.baasbox.service.user.RoleService;
@@ -86,7 +96,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.base.Objects;
 import com.google.common.collect.ImmutableMap;
 import com.orientechnologies.orient.core.db.record.ODatabaseRecordTx;
-import com.orientechnologies.orient.core.exception.OSerializationException;
 import com.orientechnologies.orient.core.index.OIndexException;
 import com.orientechnologies.orient.core.metadata.security.ORole;
 import com.orientechnologies.orient.core.metadata.security.OUser;
@@ -100,8 +109,16 @@ public class Admin extends Controller {
 	static String backupDir = DbManagerService.backupDir;
 	static String fileSeparator = DbManagerService.fileSeparator;
 
+	public static Result getSystemLog(){
+        DbHelper.close(DbHelper.getConnection());
+        response().setContentType("text/event-stream");
+        return ok(EventSource.source((e)->{
+           
+        }));
+	}
+	
 	public static Result getUsers(){
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		Context ctx=Http.Context.current.get();
 		QueryParams criteria = (QueryParams) ctx.args.get(IQueryParametersKeys.QUERY_PARAMETERS);
 		List<ODocument> users=null;
@@ -112,17 +129,17 @@ public class Admin extends Controller {
 			return badRequest("The request is malformed: check your query criteria");
 		}
 		try{
-			ret=OJSONWriter.listToJSON(users,JSONFormats.Formats.USER.toString());
+			ret=JSONFormats.prepareResponseToJson(users,JSONFormats.Formats.USER_LOAD_BY_ADMIN);
 		}catch (Throwable e){
 			return internalServerError(ExceptionUtils.getFullStackTrace(e));
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		response().setContentType("application/json");
 		return ok(ret);
 	}
 
 	public static Result getUser(String username){
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		Context ctx=Http.Context.current.get();
 
 		ODocument user=null;
@@ -134,17 +151,17 @@ public class Admin extends Controller {
 		if (user==null) return notFound("User " + username + " not found");
 		String ret="";
 		try{
-			ret=user.toJSON(JSONFormats.Formats.USER.toString());
+			ret=user.toJSON(JSONFormats.Formats.USER_LOAD_BY_ADMIN.toString());
 		}catch (Throwable e){
 			return internalServerError(ExceptionUtils.getFullStackTrace(e));
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		response().setContentType("application/json");
 		return ok(ret);
 	}
 
 	public static Result getCollections(){
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 
 		List<ImmutableMap> result=null;
 		try {
@@ -153,29 +170,29 @@ public class Admin extends Controller {
 			List<ODocument> collections = CollectionService.getCollections(criteria);
 			result = StatisticsService.collectionsDetails(collections);
 		} catch (Exception e){
-			Logger.error(ExceptionUtils.getFullStackTrace(e));
-			return internalServerError(e.getMessage());
+			BaasBoxLogger.error(ExceptionUtils.getFullStackTrace(e));
+			return internalServerError(ExceptionUtils.getMessage(e));
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		response().setContentType("application/json");
 		return ok(toJson(result));
 	}
 
 	public static Result createCollection(String name) throws Throwable{
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		try{
 			CollectionService.create(name);
 		}catch (CollectionAlreadyExistsException e) {
-			return badRequest(e.getMessage()); 
+			return badRequest(ExceptionUtils.getMessage(e)); 
 		}catch (InvalidCollectionException e) {
 			return badRequest("The collection name " + name + " is invalid");
 		}catch (InvalidModelException e){
-			return badRequest(e.getMessage());
+			return badRequest(ExceptionUtils.getMessage(e));
 		}catch (Throwable e){
-			Logger.error(ExceptionUtils.getFullStackTrace(e));
+			BaasBoxLogger.error(ExceptionUtils.getFullStackTrace(e));
 			throw e;
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		return created();
 	}
 
@@ -188,7 +205,8 @@ public class Admin extends Controller {
 			response = ImmutableMap.<String,Object>builder().
 					put("installation", (Object)ImmutableMap.of(
 							"bb_id",bbId
-							,"bb_version", Internal.DB_VERSION.getValueAsString()
+							,"bb_version", BBConfiguration.getApiVersion()
+							,"db_version", Internal.DB_VERSION.getValueAsString()
 							))
 							.put("db", StatisticsService.db())
 							.put("data",StatisticsService.data())
@@ -197,11 +215,11 @@ public class Admin extends Controller {
 							.put("memory",StatisticsService.memory()).build();
 
 		} catch (SqlInjectionException e) {
-			Logger.error (ExceptionUtils.getFullStackTrace(e));
-			return internalServerError(e.getMessage());
+			BaasBoxLogger.error (ExceptionUtils.getFullStackTrace(e));
+			return internalServerError(ExceptionUtils.getMessage(e));
 		} catch (InvalidCollectionException e) {
-			Logger.error (ExceptionUtils.getFullStackTrace(e));
-			return internalServerError(e.getMessage());
+			BaasBoxLogger.error (ExceptionUtils.getFullStackTrace(e));
+			return internalServerError(ExceptionUtils.getMessage(e));
 		}
 		response().setContentType("application/json");
 		return ok(toJson(response));
@@ -301,11 +319,11 @@ public class Admin extends Controller {
 	/* create user in any role */
 
 	public static Result createUser(){
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		Http.RequestBody body = request().body();
 
 		JsonNode bodyJson= body.asJson();
-		if (Logger.isDebugEnabled()) Logger.debug("signUp bodyJson: " + bodyJson);
+		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("signUp bodyJson: " + bodyJson);
 
 		//check and validate input
 		if (!bodyJson.has("username"))
@@ -320,9 +338,12 @@ public class Admin extends Controller {
 		JsonNode privateAttributes = bodyJson.get(UserDao.ATTRIBUTES_VISIBLE_ONLY_BY_THE_USER);
 		JsonNode friendsAttributes = bodyJson.get(UserDao.ATTRIBUTES_VISIBLE_BY_FRIENDS_USER);
 		JsonNode appUsersAttributes = bodyJson.get(UserDao.ATTRIBUTES_VISIBLE_BY_REGISTERED_USER);
+		JsonNode userID = bodyJson.get(BaasBoxPrivateFields.ID.toString());
+		
 		String username=(String) bodyJson.findValuesAsText("username").get(0);
 		String password=(String)  bodyJson.findValuesAsText("password").get(0);
 		String role=(String)  bodyJson.findValuesAsText("role").get(0);
+		String id = (userID!=null && userID.isTextual())? userID.asText():null;
 
 		if (privateAttributes!=null && privateAttributes.has("email")) {
 			//check if email address is valid
@@ -332,36 +353,37 @@ public class Admin extends Controller {
 
 		//try to signup new user
 		try {
-			UserService.signUp(username, password, null,role,nonAppUserAttributes, privateAttributes, friendsAttributes, appUsersAttributes,false);
+			UserService.signUp(username, password, null,role,nonAppUserAttributes, privateAttributes, friendsAttributes, appUsersAttributes,false,id);
 		}catch(InvalidParameterException e){
-			return badRequest(e.getMessage());  
-		}catch (OSerializationException e){
-			return badRequest("Body is not a valid JSON: " + e.getMessage() + "\nyou sent:\n" + bodyJson.toString() + 
+			return badRequest(ExceptionUtils.getMessage(e));  
+		}catch (InvalidJsonException e){
+			return badRequest("Body is not a valid JSON: " + ExceptionUtils.getMessage(e) + "\nyou sent:\n" + bodyJson.toString() + 
 					"\nHint: check the fields "+UserDao.ATTRIBUTES_VISIBLE_BY_ANONYMOUS_USER+
 					", " + UserDao.ATTRIBUTES_VISIBLE_ONLY_BY_THE_USER+
 					", " + UserDao.ATTRIBUTES_VISIBLE_BY_FRIENDS_USER  + 
 					", " + UserDao.ATTRIBUTES_VISIBLE_BY_REGISTERED_USER+
 					" they must be an object, not a value.");
 		}catch (UserAlreadyExistsException e){
-			return badRequest(e.getMessage());
-		}catch (Exception e) {
-			Logger.error(ExceptionUtils.getFullStackTrace(e));
+			return badRequest(ExceptionUtils.getMessage(e));
+		} catch (EmailAlreadyUsedException e){
+			if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("signUp", e);
+			return badRequest(username + ": the email provided is already in use");
+		} catch (Exception e) {
+			BaasBoxLogger.error(ExceptionUtils.getFullStackTrace(e));
 			throw new RuntimeException(e) ;
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		return created();
 	}//createUser
 
 
 	public static Result updateUser(String username){
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		Http.RequestBody body = request().body();
 
 		JsonNode bodyJson= body.asJson();
-		if (Logger.isDebugEnabled()) Logger.debug("signUp bodyJson: " + bodyJson);
+		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("signUp bodyJson: " + bodyJson);
 
-		if (!bodyJson.has("role"))
-			return badRequest("The 'role' field is missing");	
 
 		//extract fields
 		String missingField = null;
@@ -394,7 +416,9 @@ public class Admin extends Controller {
 		}catch(Exception npe){
 			return badRequest("The '"+ missingField+"' field is missing");
 		}
-		String role=(String)  bodyJson.findValuesAsText("role").get(0);
+		String role=null;
+		if (bodyJson.has("role"))
+			role= (String)  bodyJson.findValuesAsText("role").get(0);
 
 		if (privateAttributes.has("email")) {
 			//check if email address is valid
@@ -407,20 +431,22 @@ public class Admin extends Controller {
 		try {
 			user=UserService.updateProfile(username,role,nonAppUserAttributes, privateAttributes, friendsAttributes, appUsersAttributes);
 		}catch(InvalidParameterException e){
-			return badRequest(e.getMessage());  
-		}catch (OSerializationException e){
-			return badRequest("Body is not a valid JSON: " + e.getMessage() + "\nyou sent:\n" + bodyJson.toString() + 
+			return badRequest(ExceptionUtils.getMessage(e));  
+		}catch (InvalidJsonException e){
+			return badRequest("Body is not a valid JSON: " + ExceptionUtils.getMessage(e) + "\nyou sent:\n" + bodyJson.toString() + 
 					"\nHint: check the fields "+UserDao.ATTRIBUTES_VISIBLE_BY_ANONYMOUS_USER+
 					", " + UserDao.ATTRIBUTES_VISIBLE_ONLY_BY_THE_USER+
 					", " + UserDao.ATTRIBUTES_VISIBLE_BY_FRIENDS_USER  + 
 					", " + UserDao.ATTRIBUTES_VISIBLE_BY_REGISTERED_USER+
 					" they must be an object, not a value.");
+		}catch (AdminCannotChangeRoleException e){
+			return badRequest("User 'admin' cannot change role");
 		}catch (Throwable e){
-			Logger.warn("signUp", e);
+			BaasBoxLogger.warn("signUp", e);
 			if (Play.isDev()) return internalServerError(ExceptionUtils.getFullStackTrace(e));
-			else return internalServerError(e.getMessage());
+			else return internalServerError(ExceptionUtils.getMessage(e));
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		return ok(user.toJSON(Formats.USER.toString()));
 	}//updateUser
 
@@ -432,10 +458,10 @@ public class Admin extends Controller {
 	 * @throws SqlInjectionException 
 	 */
 	public static Result changePassword(String username) throws SqlInjectionException, UserNotFoundException{
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		Http.RequestBody body = request().body();
 		JsonNode bodyJson= body.asJson(); //{"password":"Password"}
-		if (Logger.isTraceEnabled()) Logger.trace("changePassword bodyJson: " + bodyJson);
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("changePassword bodyJson: " + bodyJson);
 		
 		if (bodyJson==null) return badRequest("The body payload cannot be empty.");		  
 		JsonNode passwordNode=bodyJson.findValue("password");
@@ -446,10 +472,13 @@ public class Admin extends Controller {
 		try{
 			UserService.changePassword(username, password);
 		} catch (UserNotFoundException e) {
-		    Logger.error("Username not found " + username, e);
+		    BaasBoxLogger.debug("Username not found " + username, e);
 		    return notFound("Username not found");
+		} catch (OpenTransactionException e) {
+			BaasBoxLogger.error (ExceptionUtils.getFullStackTrace(e));
+			throw new RuntimeException(e);
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		return ok();	
 	}
 
@@ -467,7 +496,7 @@ public class Admin extends Controller {
 	 * @return
 	 */
 	public static Result dropCollection(String name){
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		try {
 			CollectionService.drop(name);
 		}catch (SqlInjectionException e){
@@ -475,10 +504,10 @@ public class Admin extends Controller {
 		}catch (InvalidCollectionException e){
 			return notFound("The Collection " + name + " does not exist");
 		}catch (Exception e){
-			Logger.error(ExceptionUtils.getFullStackTrace(e));
-			return internalServerError(e.getMessage());
+			BaasBoxLogger.error(ExceptionUtils.getFullStackTrace(e));
+			return internalServerError(ExceptionUtils.getMessage(e));
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		response().setContentType("application/json");
 		return ok();
 	}
@@ -501,7 +530,7 @@ public class Admin extends Controller {
 		return ok(dump);
 	}
 
-	public static Result setConfiguration(String section, String subSection, String key, String value){
+	public static Result setConfiguration(String section, String subSection, String key, String value) throws PushNotInitializedException, PushSwitchException, MalformedURLException, IOException, PushInvalidApiKeyException{
 		
 		Class conf = PropertiesConfigurationHelper.CONFIGURATION_SECTIONS.get(section);
 		if (conf==null) return notFound(section + " is not a valid configuration section");
@@ -528,6 +557,7 @@ public class Admin extends Controller {
 				PropertiesConfigurationHelper.setByKey(conf, key, value);
 			
 			}else{
+				
 				IProperties i = (IProperties)PropertiesConfigurationHelper.findByKey(conf, key);
 				if(i.getType().equals(ConfigurationFileContainer.class)){
 					MultipartFormData  body = request().body().asMultipartFormData();
@@ -541,15 +571,23 @@ public class Admin extends Controller {
 						baos.close();
 						conf.getMethod("setValue",Object.class).invoke(i,fileValue);
 					}catch(Exception e){
-						internalServerError(e.getMessage());
+						internalServerError(ExceptionUtils.getMessage(e));
 					}
 				}
 			}
 		
-		} catch (ConfigurationException e) {
-			return badRequest(e.getMessage());
+		} catch (PushNotInitializedException e) {
+		 	return status(CustomHttpCode.PUSH_CONFIG_INVALID.getBbCode(), CustomHttpCode.PUSH_CONFIG_INVALID.getDescription());
+		} catch (PushSwitchException e) {
+			return status(CustomHttpCode.PUSH_SWITCH_EXCEPTION.getBbCode(),CustomHttpCode.PUSH_SWITCH_EXCEPTION.getDescription());
 		}catch (IllegalStateException e) {
 			return badRequest("This configuration value is not editable");
+		}catch (PushInvalidApiKeyException e) {
+		 	return status(CustomHttpCode.PUSH_INVALID_APIKEY.getBbCode(),CustomHttpCode.PUSH_INVALID_APIKEY.getDescription());		
+		} catch (NumberFormatException e) {
+			return badRequest(value + " must be a number");
+		} catch (ConfigurationException e) {
+			return badRequest(ExceptionUtils.getMessage(e));
 		}
 		String message = "";
 		if(inQueryString){
@@ -565,12 +603,12 @@ public class Admin extends Controller {
 
 	public static Result getLatestVersion() {
 		String urlToCall="http://www.baasbox.com/version/"+ Internal.INSTALLATION_ID.getValueAsString() + "/";
-		if (Logger.isDebugEnabled()) Logger.debug("Calling " + urlToCall);
+		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Calling " + urlToCall);
 		try{
 			final Promise<Response> promise = WS.url(urlToCall).get();
 			return status(promise.get().getStatus(),promise.get().getBody());
 		}catch(Exception e){
-			Logger.warn("Could not reach BAASBOX site to check for new versions");
+			BaasBoxLogger.warn("Could not reach BAASBOX site to check for new versions");
 		}
 		return status(503,"Could not reach BAASBOX site to check for new versions");
 	}//getLatestVersion
@@ -581,13 +619,13 @@ public class Admin extends Controller {
 		try{
 			DbHelper.shutdownDB(true);
 			if(timeout>0){
-				Logger.info(String.format("Sleeping for %d seconds",timeout/1000));
+				BaasBoxLogger.info(String.format("Sleeping for %d seconds",timeout/1000));
 				Thread.sleep(timeout);
 			}
 			r = ok();
 		}catch(Exception e){
-			Logger.error(e.getMessage());
-			r = internalServerError(e.getMessage());
+			BaasBoxLogger.error(ExceptionUtils.getMessage(e));
+			r = internalServerError(ExceptionUtils.getMessage(e));
 		}
 		return r;
 	}
@@ -613,7 +651,7 @@ public class Admin extends Controller {
 		try {
 			fileName = DbManagerService.exportDb(appcode);
 		} catch (FileNotFoundException e) {
-			return internalServerError(e.getMessage());
+			return internalServerError(ExceptionUtils.getMessage(e));
 		}
 		return status(202,Json.toJson(fileName));
 	}
@@ -700,10 +738,10 @@ public class Admin extends Controller {
 				zipFile.delete();
 				return ok();	
 			}catch(org.apache.xmlbeans.impl.piccolo.io.FileFormatException e){
-				Logger.warn(e.getMessage());
-				return badRequest(e.getMessage());
+				BaasBoxLogger.warn(ExceptionUtils.getMessage(e));
+				return badRequest(ExceptionUtils.getMessage(e));
 			}catch(Exception e){
-				Logger.error(ExceptionUtils.getStackTrace(e));
+				BaasBoxLogger.error(ExceptionUtils.getStackTrace(e));
 				return internalServerError(ExceptionUtils.getStackTrace(e));
 			}finally{
 				try {
@@ -734,7 +772,10 @@ public class Admin extends Controller {
 		try {
 			UserService.disableUser(username);
 		} catch (UserNotFoundException e) {
-			return badRequest(e.getMessage());
+			return badRequest(ExceptionUtils.getMessage(e));
+		} catch (OpenTransactionException e) {
+			BaasBoxLogger.error (ExceptionUtils.getFullStackTrace(e));
+			throw new RuntimeException(e);
 		}
 		return ok();
 	}
@@ -752,7 +793,10 @@ public class Admin extends Controller {
 		try {
 			UserService.enableUser(username);
 		} catch (UserNotFoundException e) {
-			return badRequest(e.getMessage());
+			return badRequest(ExceptionUtils.getMessage(e));
+		} catch (OpenTransactionException e) {
+			BaasBoxLogger.error (ExceptionUtils.getFullStackTrace(e));
+			throw new RuntimeException(e);
 		}
 		return ok();
 	}
@@ -785,7 +829,7 @@ public class Admin extends Controller {
 				UserService.addUserToRole(follower,friendshipRole);
 				return created();
 			}catch(Exception e){
-				return internalServerError(e.getMessage());
+				return internalServerError(ExceptionUtils.getMessage(e));
 			}
 			
 		}else{
@@ -829,7 +873,7 @@ public class Admin extends Controller {
 				UserService.removeUserFromRole(follower,friendshipRole);
 				return ok();
 			}catch(Exception e){
-				return internalServerError(e.getMessage());
+				return internalServerError(ExceptionUtils.getMessage(e));
 			}
 			
 		}else{
@@ -872,15 +916,15 @@ public class Admin extends Controller {
 				followers = UserService.getUserProfilebyUsernames(usernames);
 				return ok(User.prepareResponseToJson(followers));
 			} catch (Exception e) {
-				Logger.error(e.getMessage());
-				return internalServerError(e.getMessage());
+				BaasBoxLogger.error(ExceptionUtils.getMessage(e));
+				return internalServerError(ExceptionUtils.getMessage(e));
 			}
 		 }
 	}
 
     /// permissions
     public static Result getPermissionTag(String name){
-        if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+        if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
         Result res;
         try {
             final ImmutableMap<String, Object> tag = PermissionTagService.getPermissionTagMap(name);
@@ -890,14 +934,14 @@ public class Admin extends Controller {
                 res = ok(toJson(tag));
             }
         } catch (SqlInjectionException e) {
-            res = badRequest(e.getMessage());
+            res = badRequest(ExceptionUtils.getMessage(e));
         }
-        if (Logger.isTraceEnabled()) Logger.trace("Method End");
+        if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
         return res;
     }
 
     public static Result setPermissionTagEnabled(String name,boolean enable){
-        if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+        if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
         Result res;
         try {
             PermissionTagService.setTagEnabled(name,enable);
@@ -905,23 +949,23 @@ public class Admin extends Controller {
         } catch (InvalidPermissionTagException e) {
             res = notFound("tag permission "+name+" does not exists");
         } catch (SqlInjectionException e) {
-            res = badRequest(e.getMessage());
+            res = badRequest(ExceptionUtils.getMessage(e));
         }
-        if (Logger.isTraceEnabled()) Logger.trace("Method End");
+        if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
         return res;
     }
 
     public static Result getPermissionTags(){
-        if (Logger.isTraceEnabled())Logger.trace("Method Start");
+        if (BaasBoxLogger.isTraceEnabled())BaasBoxLogger.trace("Method Start");
         Result res;
         try{
-            ImmutableMap<String, Boolean> tags = PermissionTagService.getPermissionTagsMap();
+            ImmutableMap<String, Object[]> tags = PermissionTagService.getPermissionTagsMap();
             res = ok(toJson(tags));
         } catch (Throwable e){
-            Logger.error(e.getMessage());
-            res = internalServerError(e.getMessage());
+            BaasBoxLogger.error(ExceptionUtils.getMessage(e));
+            res = internalServerError(ExceptionUtils.getMessage(e));
         }
-        if (Logger.isTraceEnabled())Logger.trace("Method End");
+        if (BaasBoxLogger.isTraceEnabled())BaasBoxLogger.trace("Method End");
         return res;
     }
 }

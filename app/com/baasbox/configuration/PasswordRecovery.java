@@ -18,7 +18,7 @@
 
 package com.baasbox.configuration;
 
-import play.Logger;
+import com.baasbox.service.logging.BaasBoxLogger;
 
 import org.apache.commons.lang3.BooleanUtils;
 
@@ -36,10 +36,10 @@ public enum PasswordRecovery implements IProperties{
 	PAGE_HTML_FEEDBACK_TEMPLATE("page.html.feedback.template","The HTML template feedback page. It should contain the $error$ and $message$ placeholders.", String.class),
 	
 	NETWORK_SMTP_HOST("network.smtp.host", "IP ADDRESS or fully qualified name of the SMTP server.", String.class),
-	NETWORK_SMTP_PORT("network.smtp.port", "The TCP port of the SMTP server. Used only if network.smtp.enable is set to TRUE", Integer.class),
-	NETWORK_SMTP_SSL("network.smtp.ssl", "Enable or disable the SSL protocol for the SMTP server. Used only if network.smtp.enable is set to TRUE", Boolean.class),
-	NETWORK_SMTP_TLS("network.smtp.tls", "Enable or disable the TLS protocol for the SMTP server. Used only if network.smtp.enable is set to TRUE", Boolean.class),
-	NETWORK_SMTP_AUTHENTICATION("network.smtp.authentication", "Set to TRUE if the SMTP server requires authentication. Used only if network.smtp.enable is set to TRUE", Boolean.class),
+	NETWORK_SMTP_PORT("network.smtp.port", "The TCP port of the SMTP server.", Integer.class),
+	NETWORK_SMTP_SSL("network.smtp.ssl", "Enable or disable the SSL protocol for the SMTP server.", Boolean.class),
+	NETWORK_SMTP_TLS("network.smtp.tls", "Enable or disable the TLS protocol for the SMTP server.", Boolean.class),
+	NETWORK_SMTP_AUTHENTICATION("network.smtp.authentication", "Set to TRUE if the SMTP server requires authentication.", Boolean.class),
 	NETWORK_SMTP_USER("network.smtp.user", "The username required by the SMTP server when authentication is required. Used only if network.smtp.authentication is set to TRUE", String.class),
 	NETWORK_SMTP_PASSWORD("network.smtp.password", "The password required by the SMTP server if it requires authentication. Used only if network.smtp.authentication is set to TRUE", String.class);
 	
@@ -89,7 +89,7 @@ public enum PasswordRecovery implements IProperties{
 		      else
 		    	  parsedValue = newValue;
 	    }catch (Exception e){
-	    	Logger.warn(newValue + " value is invalid for key " + key + "\nNULL will be stored");
+	    	BaasBoxLogger.warn(newValue + " value is invalid for key " + key + "\nNULL will be stored");
 	    }
 	    if (changeCallback != null) changeCallback.change(getValue(), newValue);		
 		IndexPasswordRecoveryConfiguration idx;
@@ -97,7 +97,7 @@ public enum PasswordRecovery implements IProperties{
 			idx = new IndexPasswordRecoveryConfiguration();
 			idx.put(key, parsedValue);
 		} catch (Exception e) {
-			Logger.error("Could not store key " + key, e);
+			BaasBoxLogger.error("Could not store key " + key, e);
 			throw new RuntimeException("Could not store key " + key,e);
 		}
 	}
@@ -115,7 +115,7 @@ public enum PasswordRecovery implements IProperties{
 			idx = new IndexPasswordRecoveryConfiguration();
 			return idx.get(key);
 		} catch (Exception e) {
-			Logger.error("Could not retrieve key " + key, e);
+			BaasBoxLogger.error("Could not retrieve key " + key, e);
 		}
 		return null;
 	}
@@ -175,7 +175,7 @@ public enum PasswordRecovery implements IProperties{
 	public void override(Object newValue) {
 	    Object parsedValue=null;
 
-	    if (Logger.isDebugEnabled()) Logger.debug("New setting value, key: " + this.key + ", type: "+ this.type + ", new value: " + newValue);
+	    if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("New setting value, key: " + this.key + ", type: "+ this.type + ", new value: " + newValue);
 	    if (changeCallback != null) changeCallback.change(getValue(), newValue);	
 	    if (newValue != null)
 	      if (type == Boolean.class)

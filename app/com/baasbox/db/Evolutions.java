@@ -23,8 +23,8 @@ import java.util.Iterator;
 import java.util.NavigableMap;
 import java.util.TreeMap;
 
-import play.Logger;
-
+import com.baasbox.configuration.Internal;
+import com.baasbox.service.logging.BaasBoxLogger;
 import com.orientechnologies.orient.core.db.record.ODatabaseRecordTx;
 
 public class Evolutions {
@@ -35,15 +35,32 @@ public class Evolutions {
 	 * @param fromVersion
 	 */
 	public static void performEvolutions(ODatabaseRecordTx db,String fromVersion){
+		preEvolutionTasks(db);
 		Evolutions evs=new Evolutions();
 		Collection<IEvolution> evolutions = evs.getEvolutionsFromVersion(fromVersion);
-		Logger.info("Found " + evolutions.size() + " evolutions to apply");
+		BaasBoxLogger.info("Found " + evolutions.size() + " evolutions to apply");
 		Iterator<IEvolution> it = evolutions.iterator();
 		while (it.hasNext()){
 			IEvolution ev = it.next();
-			Logger.info("Applying evolution to " + ev.getFinalVersion());
+			BaasBoxLogger.info("Applying evolution to " + ev.getFinalVersion());
 			ev.evolve(db);
+			BaasBoxLogger.info("DB version evolved to version " + ev.getFinalVersion());
+			Internal.DB_VERSION._setValue(ev.getFinalVersion());
 		}
+		postEvolutionTasks(db);
+	}
+	
+	private static void  preEvolutionTasks(ODatabaseRecordTx db){
+		BaasBoxLogger.info("Performing pre-evolutions tasks....");
+		//nothing todo at the moment
+		BaasBoxLogger.info("...end");
+	}
+	
+	private static void  postEvolutionTasks(ODatabaseRecordTx db){
+		BaasBoxLogger.info("Performing post-evolutions tasks....");
+		 DbHelper.execMultiLineCommands(db,true,
+                 "rebuild index *");
+		BaasBoxLogger.info("...end");
 	}
 	
 	public Evolutions(){
@@ -57,6 +74,16 @@ public class Evolutions {
 		me.put(ev.getFinalVersion(), ev);
 		ev= (IEvolution)new Evolution_0_8_1();
 		me.put(ev.getFinalVersion(), ev);
+		ev= (IEvolution)new Evolution_0_8_3();
+		me.put(ev.getFinalVersion(), ev);
+		ev= (IEvolution)new Evolution_0_8_4();
+		me.put(ev.getFinalVersion(), ev);
+		ev = (IEvolution)new Evolution_0_9_0();
+		me.put(ev.getFinalVersion(),ev);
+		ev = (IEvolution)new Evolution_0_9_4();
+		me.put(ev.getFinalVersion(),ev);
+		ev = (IEvolution)new Evolution_1_0_0_M1();
+		me.put(ev.getFinalVersion(),ev);
 	}
 	
 	public Collection<IEvolution> getEvolutions(){

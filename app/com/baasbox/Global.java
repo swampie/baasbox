@@ -23,31 +23,25 @@ import static play.mvc.Results.badRequest;
 import static play.mvc.Results.internalServerError;
 import static play.mvc.Results.notFound;
 
-import play.api.libs.concurrent.Promise;
-import java.io.UnsupportedEncodingException;
-import play.mvc.Results.*;
-import play.libs.F;
-import play.mvc.*;
-import play.mvc.Http.*;
-
 import java.util.Iterator;
 import java.util.Set;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.apache.commons.lang3.math.NumberUtils;
 
 import play.Application;
 import play.Configuration;
 import play.GlobalSettings;
-import play.Logger;
+import com.baasbox.service.logging.BaasBoxLogger;
 import play.Play;
 import play.api.mvc.EssentialFilter;
 import play.core.j.JavaResultExtractor;
+import play.filters.gzip.GzipFilter;
+import play.libs.F;
 import play.libs.Json;
 import play.mvc.Http.RequestHeader;
-import play.mvc.Result;
+import play.mvc.SimpleResult;
 
 import com.baasbox.configuration.Internal;
 import com.baasbox.configuration.IosCertificateHandler;
@@ -55,8 +49,12 @@ import com.baasbox.configuration.PropertiesConfigurationHelper;
 import com.baasbox.db.DbHelper;
 import com.baasbox.metrics.BaasBoxMetric;
 import com.baasbox.security.ISessionTokenProvider;
+import com.baasbox.security.ScriptingSandboxSecutrityManager;
 import com.baasbox.security.SessionTokenProvider;
 import com.baasbox.service.storage.StatisticsService;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.orientechnologies.orient.core.Orient;
 import com.orientechnologies.orient.core.config.OGlobalConfiguration;
 import com.orientechnologies.orient.core.db.document.ODatabaseDocumentPool;
@@ -65,7 +63,11 @@ import com.orientechnologies.orient.core.db.record.ODatabaseRecordTx;
 import com.orientechnologies.orient.core.exception.ODatabaseException;
 
 public class Global extends GlobalSettings {
-	
+	static {
+        /*Initialize this before anything else to avoid reflection*/
+        ScriptingSandboxSecutrityManager.init();
+    }
+
 	  private static Boolean  justCreated = false;
 
 
@@ -104,7 +106,7 @@ public class Global extends GlobalSettings {
 			  OGlobalConfiguration.FILE_DEFRAG_STRATEGY.setValue(1);
 			  
 			  OGlobalConfiguration.MEMORY_USE_UNSAFE.setValue(false);
-			  
+			  if (!NumberUtils.isNumber(System.getProperty("storage.wal.maxSize"))) OGlobalConfiguration.WAL_MAX_SIZE.setValue(300);
 			  
 			  Orient.instance().startup();
 			  ODatabaseDocumentTx db = null;
@@ -195,7 +197,6 @@ public class Global extends GlobalSettings {
     	//activate metrics
     	BaasBoxMetric.setExcludeURIStartsWith(com.baasbox.controllers.routes.Root.startMetrics().url());
     	if (BBConfiguration.getComputeMetrics()) BaasBoxMetric.start();
-    	
     	//prepare the Welcome Message
 	    String port=Play.application().configuration().getString("http.port");
 	    if (port==null) port="9000";
@@ -204,7 +205,7 @@ public class Global extends GlobalSettings {
 	    
 	    //write the Welcome Message
 	    info("");
-	    info("To login into the amministration console go to http://" + address +":" + port + "/console");
+	    info("To login into the administration console go to http://" + address +":" + port + "/console");
 	    info("Default credentials are: user:admin pass:admin AppCode: " + BBConfiguration.getAPPCODE());
 	    info("Documentation is available at http://www.baasbox.com/documentation");
 		debug("Global.onStart() ended");
@@ -232,7 +233,7 @@ public class Global extends GlobalSettings {
     					key = key.substring(0, key.lastIndexOf(".value"));
 						PropertiesConfigurationHelper.override(key,value);
 					} catch (Exception e) {
-                        error ("Error overriding the setting " + key + " with the value " + value + ": " +e.getMessage());
+                        error ("Error overriding the setting " + key + " with the value " + value + ": " +ExceptionUtils.getMessage(e));
 					}
     			}else if (key.endsWith(".visible")){ //or maybe we have to hide it when a REST API is called
     				//sets the visibility
@@ -242,7 +243,7 @@ public class Global extends GlobalSettings {
     					key = key.substring(0, key.lastIndexOf(".visible"));
 						PropertiesConfigurationHelper.setVisible(key,value);
 					} catch (Exception e) {
-						error ("Error overriding the visible attribute for setting " + key + ": " +e.getMessage());
+						error ("Error overriding the visible attribute for setting " + key + ": " +ExceptionUtils.getMessage(e));
 					}
     			}else if (key.endsWith(".editable")){ //or maybe we have to 
     				//sets the possibility to edit the value via REST API by the admin
@@ -252,7 +253,7 @@ public class Global extends GlobalSettings {
     					key = key.substring(0, key.lastIndexOf(".editable"));
 						PropertiesConfigurationHelper.setEditable(key,value);
 					} catch (Exception e) {
-						error ("Error overriding the editable attribute setting " + key + ": " +e.getMessage());
+						error ("Error overriding the editable attribute setting " + key + ": " +ExceptionUtils.getMessage(e));
 					}
     			}else { 
     				error("The configuration key: " + key + " is invalid. value, visible or editable are missing");
@@ -291,14 +292,14 @@ public class Global extends GlobalSettings {
 		if (!StringUtils.isEmpty(callId)) result.put("call_id",callId);
 	}
 	
-	private ObjectNode prepareError(RequestHeader request, String error) {
+	public ObjectNode prepareError(RequestHeader request, String error) {
 		ObjectNode result = Json.newObject();
 		ObjectMapper mapper = new ObjectMapper();
 			result.put("result", "error");
 			result.put("message", error);
 			result.put("resource", request.path());
 			result.put("method", request.method());
-			result.put("request_header", mapper.valueToTree(request.headers()));
+			result.put("request_header", (JsonNode)mapper.valueToTree(request.headers()));
 			result.put("API_version", BBConfiguration.configuration.getString(BBConfiguration.API_VERSION));
 			setCallIdOnResult(request, result);
 		return result;
@@ -310,7 +311,7 @@ public class Global extends GlobalSettings {
 		  result.put("http_code", 400);
 		  SimpleResult resultToReturn =  badRequest(result);
 		  try {
-			if (Logger.isDebugEnabled()) Logger.debug("Global.onBadRequest:\n  + result: \n" + result.toString() + "\n  --> Body:\n" + result.toString(),"UTF-8");
+			if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Global.onBadRequest:\n  + result: \n" + result.toString() + "\n  --> Body:\n" + result.toString(),"UTF-8");
 		  }finally{
 			  return F.Promise.pure (resultToReturn);
 		  }
@@ -324,7 +325,7 @@ public class Global extends GlobalSettings {
 		  result.put("http_code", 404);
 		  SimpleResult resultToReturn= notFound(result);
 		  try {
-			  if (Logger.isDebugEnabled()) Logger.debug("Global.onBadRequest:\n  + result: \n" + result.toString() + "\n  --> Body:\n" + new String(JavaResultExtractor.getBody(resultToReturn),"UTF-8"));
+			  if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Global.onBadRequest:\n  + result: \n" + result.toString() + "\n  --> Body:\n" + new String(JavaResultExtractor.getBody(resultToReturn),"UTF-8"));
 		  }finally{
 			  return F.Promise.pure (resultToReturn);
 		  }
@@ -334,13 +335,13 @@ public class Global extends GlobalSettings {
 	  @Override
 	  public F.Promise<SimpleResult> onError(RequestHeader request, Throwable throwable) {
 		  error("INTERNAL SERVER ERROR: " + request.method() + " " + request);
-		  ObjectNode result = prepareError(request, throwable.getMessage());
+		  ObjectNode result = prepareError(request, ExceptionUtils.getMessage(throwable));
 		  result.put("http_code", 500);
 		  result.put("stacktrace", ExceptionUtils.getFullStackTrace(throwable));
 		  error(ExceptionUtils.getFullStackTrace(throwable));
 		  SimpleResult resultToReturn= internalServerError(result);
 		  try {
-			  if (Logger.isDebugEnabled()) Logger.debug("Global.onBadRequest:\n  + result: \n" + result.toString() + "\n  --> Body:\n" + new String(JavaResultExtractor.getBody(resultToReturn),"UTF-8"));
+			  if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Global.onBadRequest:\n  + result: \n" + result.toString() + "\n  --> Body:\n" + new String(JavaResultExtractor.getBody(resultToReturn),"UTF-8"));
 		  } finally{
 			  return F.Promise.pure (resultToReturn);
 		  }
@@ -350,7 +351,7 @@ public class Global extends GlobalSettings {
 	@Override 
 	public <T extends EssentialFilter> Class<T>[] filters() {
 		
-		return new Class[]{com.baasbox.filters.LoggingFilter.class};
+		return new Class[]{GzipFilter.class,com.baasbox.filters.LoggingFilter.class};
 	}
 
 

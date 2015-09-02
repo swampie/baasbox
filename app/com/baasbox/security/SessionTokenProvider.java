@@ -20,16 +20,19 @@ package com.baasbox.security;
 
 import java.util.Date;
 import java.util.Enumeration;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-import play.Logger;
 import play.libs.Akka;
+import play.mvc.Http;
 import scala.concurrent.duration.FiniteDuration;
-
 import akka.actor.Cancellable;
 
+import com.baasbox.service.logging.BaasBoxLogger;
 import com.google.common.collect.ImmutableMap;
 
 public class SessionTokenProvider implements ISessionTokenProvider {
@@ -37,7 +40,7 @@ public class SessionTokenProvider implements ISessionTokenProvider {
 	protected class SessionCleaner implements Runnable{
         @Override
         public void run() {
-        	Logger.info("Session Cleaner: started");
+        	BaasBoxLogger.info("Session Cleaner: started");
         	Enumeration<String> tokens=getTokens();
         	long totalTokens=0;
         	long removedTokens=0;
@@ -45,8 +48,8 @@ public class SessionTokenProvider implements ISessionTokenProvider {
         		totalTokens++;
         		if (isExpired(tokens.nextElement())) removedTokens++;
         	}
-        	Logger.info("Session cleaner: tokens: " + totalTokens + " - removed: " + removedTokens);
-        	Logger.info("Session cleaner: finished");
+        	BaasBoxLogger.info("Session cleaner: tokens: " + totalTokens + " - removed: " + removedTokens);
+        	BaasBoxLogger.info("Session cleaner: finished");
         }
     }
 
@@ -68,7 +71,7 @@ public class SessionTokenProvider implements ISessionTokenProvider {
 	public static void destroySessionTokenProvider(){
 		if (me!=null && me.sessionCleaner!=null) {
 			me.sessionCleaner.cancel();
-			Logger.info("Session Cleaner: cancelled");
+			BaasBoxLogger.info("Session Cleaner: cancelled");
 		}
 		me=null;
 	}
@@ -80,7 +83,7 @@ public class SessionTokenProvider implements ISessionTokenProvider {
 	
 	public void setTimeout(long timeoutInMilliseconds){
 		this.expiresInMilliseconds=timeoutInMilliseconds;
-		if (Logger.isDebugEnabled()) Logger.debug("New session timeout: " + timeoutInMilliseconds + " ms");
+		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("New session timeout: " + timeoutInMilliseconds + " ms");
 	}	//setTimeout
 	
 	@Override
@@ -114,7 +117,7 @@ public class SessionTokenProvider implements ISessionTokenProvider {
 
 	@Override
 	public void removeSession(String token) {
-		if (Logger.isDebugEnabled()) Logger.debug("SessionTokenProvider: " + token + " removed");
+		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("SessionTokenProvider: " + token + " removed");
 		sessions.remove(token);
 
 	}
@@ -140,5 +143,22 @@ public class SessionTokenProvider implements ISessionTokenProvider {
 			    new FiniteDuration(timeoutInMilliseconds, TimeUnit.MILLISECONDS), 
 			    new SessionCleaner() , 
 			    Akka.system().dispatcher()); 
+	}
+	
+	@Override
+	public List<ImmutableMap<SessionKeys, ? extends Object>> getSessions(String username) {
+		Stream<ImmutableMap<SessionKeys, ? extends Object>> 
+			values = sessions
+						.values()
+						.stream()
+						.filter(x->x.get(SessionKeys.USERNAME).equals(username));
+		List<ImmutableMap<SessionKeys, ? extends Object>> toRet = values.collect(Collectors.toList());
+		return toRet;
+	}
+	@Override
+	public ImmutableMap<SessionKeys, ? extends Object> getCurrent() {
+		String token = (String) Http.Context.current().args.get("token");
+		if (token != null) return sessions.get(token);
+		else return null;
 	}
 }

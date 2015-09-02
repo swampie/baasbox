@@ -21,8 +21,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.UUID;
 
-import play.Logger;
-
+import com.baasbox.exception.UserNotFoundException;
+import com.baasbox.service.logging.BaasBoxLogger;
 import com.baasbox.dao.exception.DocumentNotFoundException;
 import com.baasbox.dao.exception.InvalidCriteriaException;
 import com.baasbox.dao.exception.InvalidModelException;
@@ -32,6 +32,7 @@ import com.baasbox.db.DbHelper;
 import com.baasbox.enumerations.Permissions;
 import com.baasbox.service.storage.BaasBoxPrivateFields;
 import com.baasbox.util.QueryParams;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.orientechnologies.orient.core.command.OCommandRequest;
 import com.orientechnologies.orient.core.db.record.ODatabaseRecordTx;
 import com.orientechnologies.orient.core.exception.OCommandExecutionException;
@@ -66,6 +67,10 @@ public abstract class NodeDao  {
 
 	protected ODatabaseRecordTx db;
 
+	public static void updateAuthor(String oldAuthor,String newAuthor){
+		Object command = DbHelper.genericSQLStatementExecute(
+				"update _bb_node set _author=? where _author=?", new String[]{newAuthor,oldAuthor});
+	}
 	 
 	public NodeDao(String modelName) {
 		super();
@@ -74,6 +79,18 @@ public abstract class NodeDao  {
 	}
 
 	
+	public static ODocument removeClassAndRid(ODocument document){
+		document.removeField("@class");
+		document.removeField("@rid");
+		return document;
+	}
+	public ObjectNode removeClassAndRid(ObjectNode document) {
+		document.remove("@class");
+		document.remove("@rid");
+		return document;
+	}
+	
+	
 	protected static HashMap<String,Object> backupBaasBoxFields(ODocument document){
 		HashMap<String,Object> map = new HashMap<String,Object>();
 		for (BaasBoxPrivateFields r : BaasBoxPrivateFields.values()){
@@ -81,6 +98,7 @@ public abstract class NodeDao  {
 		}
 		return map;
 	}
+	
 	
 	protected static ODocument restoreBaasBoxFields(ODocument document, HashMap<String,Object> map){
 		for (BaasBoxPrivateFields r : BaasBoxPrivateFields.values()){
@@ -96,6 +114,7 @@ public abstract class NodeDao  {
 	}
 
 	public Integer updateByQuery(String query) throws InvalidCriteriaException{
+		if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Update query: " + query);
 		OCommandRequest command = db.command(new OCommandSQL(
 				query
 				));
@@ -105,7 +124,7 @@ public abstract class NodeDao  {
 		}catch (OQueryParsingException e ){
 			throw new InvalidCriteriaException("Invalid criteria. Please check if your querystring is encoded in a corrected way. Double check the single-quote and the quote characters",e);
 		}catch (OCommandSQLParsingException e){
-			throw new InvalidCriteriaException("Invalid criteria. Please check the syntax of you 'where' and/or 'orderBy' clauses. Hint: if you used < or > operators, put spaces before and after them",e);
+			throw new InvalidCriteriaException(e);
 		}
 		return records;
 	}
@@ -119,38 +138,38 @@ public abstract class NodeDao  {
 		}catch (OQueryParsingException e ){
 			throw new InvalidCriteriaException("Invalid criteria. Please check if your querystring is encoded in a corrected way. Double check the single-quote and the quote characters",e);
 		}catch (OCommandSQLParsingException e){
-			throw new InvalidCriteriaException("Invalid criteria. Please check the syntax of you 'where' and/or 'orderBy' clauses. Hint: if you used < or > operators, put spaces before and after them",e);
+			throw new InvalidCriteriaException(e);
 		}	
 		return list;
 	}
-	
+
 	public ODocument create() throws Throwable {
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
-		OrientGraphNoTx db = DbHelper.getOrientGraphConnection();
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+		OrientGraph db = DbHelper.getOrientGraphConnection();
 		try{
 				ODocument doc = new ODocument(this.MODEL_NAME);
 				ODocument vertex = db.addVertex("class:" + CLASS_VERTEX_NAME,FIELD_TO_DOCUMENT_FIELD,doc).getRecord();
 				doc.field(FIELD_LINK_TO_VERTEX,vertex);
 				doc.field(FIELD_CREATION_DATE,new Date());
 				UUID token = UUID.randomUUID();
-				if (Logger.isDebugEnabled()) Logger.debug("CreateUUID.onRecordBeforeCreate: " + doc.getIdentity() + " -->> " + token.toString());
+				if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("CreateUUID.onRecordBeforeCreate: " + doc.getIdentity() + " -->> " + token.toString());
 				doc.field(BaasBoxPrivateFields.ID.toString(),token.toString());
 				doc.field(BaasBoxPrivateFields.AUTHOR.toString(),db.getRawGraph().getUser().getName());
-			return doc;
+			    return doc;
 		}catch (Throwable e){
 			throw e;
 		}finally{
-			if (Logger.isTraceEnabled()) Logger.trace("Method End");
+			if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		}
 	}
 	
 
 
 	protected  void save(ODocument document) throws InvalidModelException {
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		checkModelDocument(document);
 		document.save();
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 	}
 	
 
@@ -158,6 +177,8 @@ public abstract class NodeDao  {
 		if (documentToMerge.getVersion()!=0 && documentToMerge.getVersion()!=originalDocument.getVersion()) throw new UpdateOldVersionException("The document to merge is older than the stored one v" +documentToMerge.getVersion() + " vs v"+documentToMerge.getVersion(),documentToMerge.getVersion(), originalDocument.getVersion());
 		//backup the baasbox's fields 
 		HashMap<String,Object> map = backupBaasBoxFields(originalDocument);
+		//remove backupBaasBoxFields from data that will be merged
+		documentToMerge=removeClassAndRid(documentToMerge);
 		//update the document
 		originalDocument.merge(documentToMerge, false, false);
 		//restore the baasbox's fields
@@ -168,7 +189,7 @@ public abstract class NodeDao  {
 
 
 	public List<ODocument> get(QueryParams criteria) throws SqlInjectionException, InvalidCriteriaException {
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		List<ODocument> result = null;
 		OCommandRequest command = DbHelper.selectCommandBuilder(MODEL_NAME, false, criteria);
 		try{
@@ -179,19 +200,19 @@ public abstract class NodeDao  {
 		}catch (OQueryParsingException e ){
 			throw new InvalidCriteriaException("Invalid criteria. Please check if your querystring is encoded in a corrected way. Double check the single-quote and the quote characters",e);
 		}catch (OCommandSQLParsingException e){
-			throw new InvalidCriteriaException("Invalid criteria. Please check the syntax of you 'where' and/or 'orderBy' clauses. Hint: if you used < or > operators, put spaces before and after them",e);
+			throw new InvalidCriteriaException(e);
 		}catch (StringIndexOutOfBoundsException e){
 			throw new InvalidCriteriaException("Invalid criteria. Please check your query, the syntax and the parameters",e);
 		}catch (IndexOutOfBoundsException e){
 			throw new InvalidCriteriaException("Invalid criteria. Please check your query, the syntax and the parameters",e);
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		return result;
 	}
 
 
 	public ODocument get(ORID rid) throws InvalidModelException, DocumentNotFoundException {
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		Object doc=db.load(rid);
 		if (doc==null) throw new DocumentNotFoundException();
 		if (!(doc instanceof ODocument)) throw new IllegalArgumentException(rid +" is a rid not referencing a valid Document");
@@ -201,18 +222,18 @@ public abstract class NodeDao  {
 			//the rid may reference a ORecordBytes which is not a ODocument
 			throw new InvalidModelException("the rid " + rid + " is not valid belong to the collection " + this.MODEL_NAME);
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		return (ODocument)doc;
 	}
 
 
 	public ODocument get(String rid) throws InvalidModelException, ODatabaseException, DocumentNotFoundException {
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		Object orid=OSQLHelper.parseValue(rid, null);
 		if ((orid==null) || !(orid instanceof ORecordId) || (orid.toString().equals(OSQLHelper.VALUE_NOT_PARSED))) throw new IllegalArgumentException(rid +" is not a valid rid");
 		Object odoc=get((ORecordId)orid);
 		
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		return (ODocument)odoc;
 	}
  
@@ -263,7 +284,7 @@ public abstract class NodeDao  {
 	}
 	
 	public long getCount(QueryParams criteria) throws SqlInjectionException{
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		List<ODocument> result = null;
 		OCommandRequest command = DbHelper.selectCommandBuilder(MODEL_NAME, true, criteria);
 		try{
@@ -274,23 +295,23 @@ public abstract class NodeDao  {
 		}catch (OQueryParsingException e ){
 			throw new InvalidCriteriaException("Invalid criteria. Please check if your querystring is encoded in a corrected way. Double check the single-quote and the quote characters",e);
 		}catch (OCommandSQLParsingException e){
-			throw new InvalidCriteriaException("Invalid criteria. Please check the syntax of you 'where' and/or 'orderBy' clauses. Hint: if you used < or > operators, put spaces before and after them",e);
+			throw new InvalidCriteriaException(e);
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		return ((Long)result.get(0).field("count")).longValue();
 	}
 	
 	
 	public void delete(String rid) throws Throwable{
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		ODocument doc = get(rid);
 		delete(doc.getIdentity());
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 	}
 	
 	public void delete(ORID rid) throws Throwable{
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
-		OrientGraphNoTx db = DbHelper.getOrientGraphConnection();
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
+		OrientGraph db = DbHelper.getOrientGraphConnection();
 		//retrieve the vertex associated to this node
 		try{
 			DbHelper.requestTransaction();
@@ -303,7 +324,7 @@ public abstract class NodeDao  {
 			DbHelper.rollbackTransaction();
 			throw e;
 		}
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 	}
 	
 	

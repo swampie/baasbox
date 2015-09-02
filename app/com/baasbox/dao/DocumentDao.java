@@ -18,7 +18,7 @@ package com.baasbox.dao;
 
 import org.apache.commons.lang.exception.ExceptionUtils;
 
-import play.Logger;
+import com.baasbox.service.logging.BaasBoxLogger;
 
 import com.baasbox.BBConfiguration;
 import com.baasbox.dao.exception.InvalidCollectionException;
@@ -48,13 +48,14 @@ public class DocumentDao extends NodeDao {
 	public static DocumentDao getInstance(String collectionName) throws InvalidCollectionException{
 		return new DocumentDao(collectionName);
 	}
-	
+
 	@Override
 	public ODocument create() throws Throwable{
-		if (Logger.isTraceEnabled()) Logger.trace("Method Start");
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
 		DbHelper.requestTransaction();
 		ODocument doc = super.create();
-		if (Logger.isTraceEnabled()) Logger.trace("Method End");
+		DbHelper.commitTransaction();
+		if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method End");
 		return doc;
 	}//getNewModelInstance
 	

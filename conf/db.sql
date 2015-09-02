@@ -1,5 +1,5 @@
 --database settings
-alter database DATETIMEFORMAT yyyy-MM-dd'T'HH:mm:ss.sssZ
+alter database DATETIMEFORMAT yyyy-MM-dd'T'HH:mm:ss.SSSZ
 alter database custom useLightweightEdges=false
 alter database custom useClassForEdgeLabel=false
 alter database custom useClassForVertexLabel=true
@@ -17,6 +17,7 @@ create property _BB_NodeVertex._node link _BB_Node;
 create property _BB_Node._creation_date datetime;
 create property _BB_Node._links link _BB_NodeVertex;
 create property _BB_Node.id String;
+create property _BB_Node._author String;
 
 --user
 create class _BB_User extends _BB_Node;
@@ -27,6 +28,10 @@ create property _BB_User.visibleByFriend link _BB_UserAttributes;
 create property _BB_User.visibleByTheUser link _BB_UserAttributes;
 create property _BB_User._audit embedded;
 create property _BB_User.user link ouser;
+-- issue 447 - Restrict signup to 1 account per email
+create property _bb_userattributes.email string;
+--the enforcement of the uniqueness of registration email is performed by the code due the fact that there could be email fields in other profile sections
+create index _bb_userattributes.email notunique;
 
 
 --admin user
@@ -100,15 +105,20 @@ alter property _BB_Permissions.tag notnull=true;
 alter property _BB_Permissions.enabled mandatory=true;
 alter property _BB_Permissions.enabled notnull=true;
 
+create property orole.isrole boolean
+update orole set isrole=true
+
 --indices
 
-alter property ouser.name collate CI;
+alter property ouser.name collate ci;
 create index _BB_Collection.name unique;
 create index _BB_asset.name unique;
 create index _BB_Node.id unique;
 create index _BB_Permissions.tag unique;
---deprecated since OrientDB 1.7:
-create index ouser.name unique;
+---bug on OrientDB index? (our issue #412) We have to define a "new" index to avoid class scan when looking for a username:
+create index _bb_user.user.name unique
+create index _bb_node._author notunique;
+create index _bb_node._creation_date notunique;
 
 --configuration class
 create class _BB_Index;
@@ -122,3 +132,26 @@ create property E.id String;
 alter property E.id notnull=true;
 create index E.id unique;
 
+--Scripts
+create class _BB_Script;
+create property _BB_Script.name String;
+alter property _BB_Script.name mandatory=true;
+alter property _BB_Script.name notnull=true;
+create property _BB_Script.code embeddedlist string;
+alter property _BB_Script.code mandatory=true;
+alter property _BB_Script.code notnull=true;
+create property _BB_Script.lang string;
+alter property _BB_Script.lang mandatory=true;
+alter property _BB_Script.lang notnull=true;
+create property _BB_Script.library boolean;
+alter property _BB_Script.library mandatory=true;
+alter property _BB_Script.library notnull=true;
+create property _BB_Script.active boolean;
+alter property _BB_Script.active mandatory=true;
+alter property _BB_Script.active notnull=true;
+create property _BB_Script._storage embedded;
+create property _BB_Script._creation_date datetime;
+create property _BB_Script._invalid boolean;
+alter property _BB_Script._invalid mandatory=true;
+alter property _BB_Script._invalid notnull=true;
+create index _BB_Script.name unique;

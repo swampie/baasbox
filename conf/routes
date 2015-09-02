@@ -19,6 +19,8 @@ GET 	/console/						com.baasbox.controllers.Application.login()
 GET     /console/js/routes      	 	com.baasbox.controllers.AllRoutes.javascriptRoutes()
 GET     /console/*file               	controllers.Assets.at(path="/public/console", file)
 
+# Admin log
+GET 	/admin/log						com.baasbox.controllers.EventsController.openSystemLogger
 
 #Assets action
 POST	/admin/asset						com.baasbox.controllers.Asset.post()
@@ -96,6 +98,9 @@ PUT 	/me/suspend						com.baasbox.controllers.User.disable()
 # @tag(baasbox.account)
 PUT		/me/password					com.baasbox.controllers.User.changePassword()
 
+# @tag(baasbox.account)
+PUT		/me/username				com.baasbox.controllers.User.changeUserName()
+
 
 #forgotten password
 
@@ -164,6 +169,9 @@ DELETE   /admin/follow/:follower/to/:theFollowed	com.baasbox.controllers.Admin.r
 
 # @tag(baasbox.notifications.send)
 POST	/push/message/:username		    com.baasbox.controllers.Push.send(username: String)
+
+# @tag(baasbox.notifications.send)
+POST    /push/message					com.baasbox.controllers.Push.sendUsers()
 
 # @tag(baasbox.notifications.receive)
 PUT 	/push/enable/:os/:pushToken     com.baasbox.controllers.Push.enablePush(os: String, pushToken: String)
@@ -255,7 +263,8 @@ PUT		/document/:collection/:uuid/:action/role/:rolename		com.baasbox.controllers
 # @tag(baasbox.data.grants)
 DELETE	/document/:collection/:uuid/:action/role/:rolename		com.baasbox.controllers.Document.revokeToRole(collection:String, uuid:String, rolename:String, action:String, isUUID: Boolean ?= true)
 
-
+# @tag(baasbox.data.grants)
+PUT 	/document/:collection/:uuid/acl							com.baasbox.controllers.Document.updateAcl(collection:String, uuid:String)
 
 #Admin actions
 GET		/admin/user						com.baasbox.controllers.Admin.getUsers()
@@ -327,7 +336,10 @@ GET		/admin/configuration/:section							com.baasbox.controllers.Admin.getConfig
 
 PUT		/admin/configuration/:section/:subSection/:key/:value	com.baasbox.controllers.Admin.setConfiguration(section: String, subSection: String, key: String, value: String)
 #DEPRECATED
+# --------
 PUT		/admin/configuration/:section/:key/:value				com.baasbox.controllers.Admin.setConfiguration(section: String, subSection: String ?= "", key: String, value: String)
+# --------
+
 PUT     /admin/configuration/:section/:key                      com.baasbox.controllers.Admin.setConfiguration(section: String, subSection: String ?= "", key: String, value: String ?= "")
 PUT     /admin/configuration/:section                        	com.baasbox.controllers.Admin.setConfiguration(section: String, subSection: String ?= "", key: String ?= "", value: String ?= "")
 
@@ -339,6 +351,38 @@ DELETE	/admin/db/export/:filename							    com.baasbox.controllers.Admin.delete
 GET	    /admin/db/export										com.baasbox.controllers.Admin.getExports()
 POST	/admin/db/import         							    com.baasbox.controllers.Admin.importDb()
 
+#scripts
+
+# @tag(baasbox.scripts.invoke)
+GET /plugin/:name                              com.baasbox.controllers.ScriptInvoker.invoke(name:String,params="")
+# @tag(baasbox.scripts.invoke)
+GET /plugin/:name/*params                      com.baasbox.controllers.ScriptInvoker.invoke(name:String,params)
+# @tag(baasbox.scripts.invoke)
+POST /plugin/:name                             com.baasbox.controllers.ScriptInvoker.invoke(name:String,params="")
+# @tag(baasbox.scripts.invoke)
+POST /plugin/:name/*params                      com.baasbox.controllers.ScriptInvoker.invoke(name:String,params)
+# @tag(baasbox.scripts.invoke)
+PUT /plugin/:name                              com.baasbox.controllers.ScriptInvoker.invoke(name:String,params="")
+# @tag(baasbox.scripts.invoke)
+PUT /plugin/:name/*params                      com.baasbox.controllers.ScriptInvoker.invoke(name:String,params)
+# @tag(baasbox.scripts.invoke)
+DELETE /plugin/:name                             com.baasbox.controllers.ScriptInvoker.invoke(name:String,params="")
+# @tag(baasbox.scripts.invoke)
+DELETE /plugin/:name/*params                      com.baasbox.controllers.ScriptInvoker.invoke(name:String,params)
+
+GET /admin/plugin/logs                         com.baasbox.controllers.EventsController.openLogger()
+POST /admin/plugin                             com.baasbox.controllers.ScriptsAdmin.create()
+GET  /admin/plugin                             com.baasbox.controllers.ScriptsAdmin.list()
+GET  /admin/plugin/:name                       com.baasbox.controllers.ScriptsAdmin.get(name:String)
+PUT  /admin/plugin/:name                       com.baasbox.controllers.ScriptsAdmin.update(name:String)
+DELETE  /admin/plugin/:name/last               com.baasbox.controllers.ScriptsAdmin.delete(name:String)
+DELETE /admin/plugin/:name					   com.baasbox.controllers.ScriptsAdmin.drop(name:String)
+PUT /admin/plugin/:name/active                 com.baasbox.controllers.ScriptsAdmin.activate(name: String)
+DELETE /admin/plugin/:name/active              com.baasbox.controllers.ScriptsAdmin.deactivate(name: String)
+
+
+#GET /admin/stats/logs                           com.baasbox.controllers.Stats.log()
+
 # endpoints switches
 
 GET     /admin/endpoints                                        com.baasbox.controllers.Admin.getPermissionTags
@@ -349,6 +393,7 @@ DELETE  /admin/endpoints/:tag/enabled                           com.baasbox.cont
 # ROOT access
 # ROOT RESET ADMIN PASSWORD
 POST	/root/resetadminpassword								com.baasbox.controllers.Root.resetAdminPassword()
+
 # ROOT + METRICS
 POST	/root/metrics											com.baasbox.controllers.Root.startMetrics()
 DELETE 	/root/metrics											com.baasbox.controllers.Root.stopMetrics()
@@ -366,10 +411,12 @@ DELETE	/root/db/export/:filename							    com.baasbox.controllers.Root.deleteEx
 GET	    /root/db/export											com.baasbox.controllers.Root.getExports()
 POST	/root/db/import         							    com.baasbox.controllers.Root.importDb()
 
-
+#ROOT set or override some configuration parameters
+POST	/root/configuration         							com.baasbox.controllers.Root.overrideConfiguration()
+GET		/root/configuration										com.baasbox.controllers.Root.getOverridableConfiguration()
 
 # Home page & general API
 GET		/refresh					com.baasbox.controllers.Generic.refreshSessionToken()
 GET     /                           com.baasbox.controllers.Application.index()
-GET 	/*file						controllers.Assets.at(path="/public/", file)
+GET 	/*file						com.baasbox.controllers.MyAssets.at(path="/public/", file)
 OPTIONS /*dummy						com.baasbox.controllers.Generic.getOptions(dummy: String)

@@ -14,7 +14,7 @@ import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
-import play.Logger;
+import com.baasbox.service.logging.BaasBoxLogger;
 import play.Play;
 import play.libs.F.Callback;
 import play.test.TestBrowser;
@@ -90,13 +90,13 @@ public class AdminImportTest extends AbstractRouteHeaderTest {
 	        {
 				public void invoke(TestBrowser browser) 
 				{
-					if (Logger.isDebugEnabled()) Logger.debug("Using zip file:"+correctZipFile.getAbsolutePath());
+					if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Using zip file:"+correctZipFile.getAbsolutePath());
 					setHeader(TestConfig.KEY_APPCODE, TestConfig.VALUE_APPCODE);
 					setHeader(TestConfig.KEY_AUTH, TestConfig.AUTH_ADMIN_ENC);
 					setMultipartFormData();
 					setAssetFile("/adminImportJson.zip", "application/zip");
 					int status = httpRequest("http://localhost:3333"+getRouteAddress(), getMethod(),new HashMap<String,String>());
-					assertTrue(status==200);
+					assertTrue("Status should be 200. It is " + status,status==200);
 				}
 	        }
 		);
@@ -118,9 +118,7 @@ public class AdminImportTest extends AbstractRouteHeaderTest {
 					setMultipartFormData();
 					setAssetFile("/adminImportWrongVersionJson.zip", "application/zip");
 					int status = httpRequest("http://localhost:3333"+getRouteAddress(), getMethod(),new HashMap<String,String>());
-					assertTrue(status!=200);
-					
-					
+					assertTrue("Status should not be 200. It is " + status,status!=200);
 				}
 	        }
 		);
