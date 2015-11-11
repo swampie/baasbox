@@ -17,6 +17,9 @@
 package com.baasbox.controllers.actions.filters;
 
 
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
 import org.apache.commons.lang.exception.ExceptionUtils;
 
 import play.Logger;
@@ -26,6 +29,7 @@ import play.mvc.Http;
 import play.mvc.Http.Context;
 import play.mvc.SimpleResult;
 
+import com.baasbox.controllers.Contexts;
 import com.baasbox.db.DbHelper;
 import com.baasbox.exception.InvalidAppCodeException;
 import com.baasbox.exception.ShuttingDownDBException;
@@ -72,7 +76,8 @@ public class ConnectToDBFilterAsync extends Action.Simple {
         	return F.Promise.<SimpleResult>pure(unauthorized("User " + Http.Context.current().args.get("username") + " is not authorized to access"));
         }catch (InvalidAppCodeException e){
 			if (Logger.isDebugEnabled()) Logger.debug("ConnectToDB: Invalid App Code " + e.getMessage());
-			return result = F.Promise.<SimpleResult>pure(unauthorized(e.getMessage()));	
+			return result = F.Promise.<SimpleResult>pure(unauthorized(e.getMessage()));
+        
         }catch(ShuttingDownDBException sde){
         	String message = sde.getMessage();
         	Logger.info(message);
@@ -82,8 +87,8 @@ public class ConnectToDBFilterAsync extends Action.Simple {
 			if (DbHelper.getConnection()!=null && DbHelper.isInTransaction()) DbHelper.rollbackTransaction();
 			DbHelper.close(database);
 		}
-		
-		result = delegate.call(ctx).recover(exc->{
+		result = Contexts.timed(ctx,delegate.call(ctx),10,TimeUnit.SECONDS);
+		result.recover(exc->{
 			SimpleResult resultExec;
 			try{
 				throw exc;
@@ -93,6 +98,10 @@ public class ConnectToDBFilterAsync extends Action.Simple {
 			}catch (InvalidAppCodeException e){
 				if (Logger.isDebugEnabled()) Logger.debug("ConnectToDB: Invalid App Code " + e.getMessage());
 				resultExec = unauthorized(e.getMessage());	
+			}catch (TimeoutException e){
+				if (Logger.isDebugEnabled()) Logger.debug("ConnectToDB: Timeout Exception  " + e.getMessage());
+				return internalServerError(e.getMessage());	
+	        
 			}catch (Throwable e){
 				if (Logger.isDebugEnabled()) Logger.debug("ConnectToDB: an expected error has been detected: "+ ExceptionUtils.getFullStackTrace(e));
 				resultExec = internalServerError(ExceptionUtils.getFullStackTrace(e));				

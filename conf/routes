@@ -419,6 +419,8 @@ POST	/root/db/import         							    com.baasbox.controllers.Root.importDb()
 POST	/root/configuration         							com.baasbox.controllers.Root.overrideConfiguration()
 GET		/root/configuration										com.baasbox.controllers.Root.getOverridableConfiguration()
 
+GET		/sloooow/:name								com.baasbox.controllers.SlowMo.slowMo(name: String)
+
 # Home page & general API
 GET		/refresh					com.baasbox.controllers.Generic.refreshSessionToken()
 GET     /                           com.baasbox.controllers.Application.index()

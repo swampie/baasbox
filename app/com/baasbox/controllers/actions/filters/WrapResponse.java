@@ -239,6 +239,7 @@ public class WrapResponse {
 		ctx.response().setHeader("Access-Control-Allow-Headers", "X-Requested-With");
 		//this is an hack because scala can't access to the http context, and we need this information for the access log
 		String username=(String) ctx.args.get("username");
+		
 		if (username!=null) ctx.response().setHeader("BB-USERNAME", username);
 		
 	    byte[] resultContent=null;
@@ -248,8 +249,10 @@ public class WrapResponse {
       if (isRedirect(statusCode)) {
         return result;
       }
-			if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Executed API: "  + ctx.request() + " , return code " + statusCode);
-			if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Result type:"+result.getWrappedResult().getClass().getName() + " Response Content-Type:" +ctx.response().getHeaders().get("Content-Type"));
+			if (BaasBoxLogger.isDebugEnabled()) {
+				BaasBoxLogger.debug("Executed API: "  + ctx.request() + " , return code " + statusCode);
+				BaasBoxLogger.debug("Result type:"+result.getWrappedResult().getClass().getName() + " Response Content-Type:" +ctx.response().getHeaders().get("Content-Type"));
+			}
 			if (ctx.response().getHeaders().get("Content-Type")!=null 
 		    		&& 
 		    	!ctx.response().getHeaders().get("Content-Type").contains("json")){
@@ -264,7 +267,7 @@ public class WrapResponse {
 		    	
 			final byte[] body = JavaResultExtractor.getBody(result);
 			String stringBody = new String(body, "UTF-8");
-		    if (BaasBoxLogger.isTraceEnabled()) if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace ("stringBody: " +stringBody);
+		    if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace ("stringBody: " +stringBody);
 			if (statusCode>399){	//an error has occured
 			      switch (statusCode) {
 			      	case 400: 	result =onBadRequest(ctx,stringBody);
@@ -321,8 +324,10 @@ public class WrapResponse {
         if (isRedirect(statusCode)) {
 				  return result;
 				}
-				if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Executed API: "  + ctx.request() + " , return code " + statusCode);
-				if (BaasBoxLogger.isDebugEnabled()) BaasBoxLogger.debug("Result type:"+result.getWrappedResult().getClass().getName() + " Response Content-Type:" +ctx.response().getHeaders().get("Content-Type"));
+				if (BaasBoxLogger.isDebugEnabled()) {
+					BaasBoxLogger.debug("Executed API: "  + ctx.request() + " , return code " + statusCode);
+					BaasBoxLogger.debug("Result type:"+result.getWrappedResult().getClass().getName() + " Response Content-Type:" +ctx.response().getHeaders().get("Content-Type"));
+				}
 				if (ctx.response().getHeaders().get("Content-Type")!=null 
 			    		&& 
 			    	!ctx.response().getHeaders().get("Content-Type").contains("json")){
@@ -337,7 +342,7 @@ public class WrapResponse {
 				
 			    byte[] body = JavaResultExtractor.getBody(result);  //here the promise will be resolved
 				String stringBody = new String(body, "UTF-8");
-			    if (BaasBoxLogger.isTraceEnabled()) if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace ("stringBody: " +stringBody);
+			    if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace ("stringBody: " +stringBody);
 				if (statusCode>399){	//an error has occured
 				      switch (statusCode) {
 				      	case 400: 	result =onBadRequest(ctx,stringBody);

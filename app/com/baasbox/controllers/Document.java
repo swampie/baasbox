@@ -28,6 +28,7 @@ import org.apache.commons.lang.BooleanUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 import org.apache.commons.lang3.StringUtils;
 
+import play.core.j.HttpExecutionContext;
 import play.libs.Akka;
 import play.libs.F;
 import play.libs.F.Promise;
@@ -38,6 +39,8 @@ import play.mvc.Http;
 import play.mvc.Http.Context;
 import play.mvc.Result;
 import play.mvc.With;
+import scala.concurrent.ExecutionContext;
+import scala.concurrent.ExecutionContextExecutor;
 import scala.concurrent.duration.FiniteDuration;
 import views.html.defaultpages.todo;
 
@@ -91,6 +94,7 @@ public class Document extends Controller {
 
 
     private static final String JSON_BODY_NULL = "The body payload cannot be empty. Hint: put in the request header Content-Type: application/json";
+	private static final String DB_READ_EXECUTION_CONTEXT = "play.akka.actor.db-read-context";;
 
 
     private static String prepareResponseToJson(ODocument doc) {
@@ -139,9 +143,13 @@ public class Document extends Controller {
      */
     @With({UserOrAnonymousCredentialsFilterAsync.class, ConnectToDBFilterAsync.class, ExtractQueryParameters.class})
     public static Promise<Result> getCount(String collectionName) {
+    	ExecutionContext pluginExecutionContext = Akka.system().dispatchers().lookup(DB_READ_EXECUTION_CONTEXT);
+    	ExecutionContextExecutor ece = new HttpExecutionContext(ctx().getClass().getClassLoader(),ctx(),pluginExecutionContext);
+    	
         if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("Method Start");
         if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("collectionName: " + collectionName);
 
+        
         //long count;
         Context ctx = Http.Context.current.get();
         QueryParams criteria = (QueryParams) ctx.args.get(IQueryParametersKeys.QUERY_PARAMETERS);
@@ -150,7 +158,7 @@ public class Document extends Controller {
             long count = DocumentService.getCount(collectionName, criteria);
             if (BaasBoxLogger.isTraceEnabled()) BaasBoxLogger.trace("count: " + count);
             return ok(Json.newObject().put("count", count));
-        })).recover(ErrorToResult
+        }),ece).recover(ErrorToResult
                 .when(InvalidCollectionException.class,
                         e -> {
                             if (BaasBoxLogger.isDebugEnabled())

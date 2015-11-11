@@ -25,11 +25,16 @@ import org.apache.commons.lang.ObjectUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.exception.ExceptionUtils;
 
+import play.core.Invoker;
+import play.core.j.HttpExecutionContext;
+import play.libs.Akka;
 import play.libs.F;
 import play.mvc.Controller;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.With;
+import scala.concurrent.ExecutionContext;
+import scala.concurrent.ExecutionContextExecutor;
 
 import com.baasbox.BBConfiguration;
 import com.baasbox.controllers.actions.filters.ConnectToDBFilterAsync;
@@ -55,14 +60,16 @@ import com.orientechnologies.orient.core.record.impl.ODocument;
  */
 public class ScriptInvoker extends Controller{
 
+	
+	
 
     @With({UserOrAnonymousCredentialsFilterAsync.class,
            ConnectToDBFilterAsync.class,
            ExtractQueryParameters.class})
     public static F.Promise<Result> invoke(String name,String path){
-        return F.Promise.promise(DbHelper.withDbFromContext(ctx(),()-> {
-
-
+    	
+    	final Http.Context ctx = ctx();
+    	return F.Promise.promise(DbHelper.withDbFromContext(ctx,()-> {
             ODocument serv = null;
             if (request().body().asText() != null && request().body().isMaxSizeExceeded())//fixes issue_561
                 return badRequest("Too much data! The maximum is " + ObjectUtils.toString(BBConfiguration.getInstance().configuration.getString("parsers.text.maxLength"), "128KB"));
@@ -70,6 +77,10 @@ public class ScriptInvoker extends Controller{
                 serv = ScriptingService.get(name, true, true);
             } catch (ScriptException e) {
                 return status(503, "Script is in an invalid state");
+            }
+            catch (Throwable e) {
+                e.printStackTrace();
+                return internalServerError(ExceptionUtils.getFullStackTrace(e));
             }
             if (serv == null) {
                 return notFound("Script does not exists");
@@ -85,7 +96,7 @@ public class ScriptInvoker extends Controller{
             	BaasBoxLogger.error("Error evaluating script", e);
             	return status(CustomHttpCode.PLUGIN_INTERNAL_ERROR.getBbCode(),ExceptionUtils.getFullStackTrace(e));
             }
-        }));
+        }),Contexts.pluginContext(ctx));
     }
 
     public static JsonNode serializeRequest(String path,Http.Request request){
